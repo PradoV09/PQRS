@@ -1,0 +1,82 @@
+@startuml casos-de-uso-pqrs
+left to right direction
+skinparam packageStyle rectangle
+
+actor Ciudadano   as C
+actor Funcionario as F
+actor Admin       as A
+actor Sistema     as S
+
+rectangle "Autenticación" {
+  usecase "Registrarse"     as CU01
+  usecase "Iniciar sesión"  as CU02
+  usecase "Cerrar sesión"   as CU03
+}
+
+rectangle "Gestión PQRS" {
+  usecase "Crear PQRS"      as CU04
+  usecase "Consultar PQRS"  as CU05
+  usecase "Ver detalle"     as CU06
+  usecase "Responder PQRS"  as CU08
+  usecase "Eliminar PQRS"   as CU09
+  usecase "Ver todas las PQRS" as CU10
+  usecase "Responder PQRS (admin)" as CU11
+  usecase "Cambiar estado"  as CU12
+}
+
+rectangle "Archivos" {
+  usecase "Subir archivos"  as CU15
+  usecase "Descargar archivo" as CU07
+  usecase "Eliminar archivo"  as CU16
+}
+
+rectangle "Panel Admin" {
+  usecase "Ver estadísticas" as CU13
+  usecase "Gestionar usuarios" as CU14
+}
+
+rectangle "Sistema" {
+  usecase "Validar token JWT" as CU17
+  usecase "Limpieza nocturna" as CU18
+}
+
+C --> CU01
+C --> CU02
+C --> CU03
+C --> CU04
+C --> CU05
+C --> CU06
+C --> CU07
+C --> CU08
+C --> CU09
+C --> CU15
+C --> CU16
+
+F --> CU02
+F --> CU03
+F --> CU05
+F --> CU06
+F --> CU08
+
+A --> CU02
+A --> CU03
+A --> CU10
+A --> CU11
+A --> CU12
+A --> CU13
+A --> CU14
+A --> CU07
+A --> CU15
+A --> CU16
+
+CU04 ..> CU15 : <<include>>
+CU11 ..> CU12 : <<extend>>
+CU04 ..> CU17 : <<extend>>
+CU05 ..> CU17 : <<extend>>
+CU06 ..> CU17 : <<extend>>
+CU15 ..> CU17 : <<extend>>
+
+S --> CU17
+S --> CU18
+
+@enduml

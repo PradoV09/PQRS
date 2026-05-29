@@ -1,0 +1,133 @@
+/* You can add global styles to this file, and also import other style files */
+
+/* Portal Layout Structure with Sidebar */
+.portal-layout {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.portal-content {
+  flex: 1;
+  min-height: 100vh;
+  overflow-y: auto;
+  background-color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+}
+
+:root {
+  /* Variables de color para cada estado */
+  --estado-pendiente-bg: #fef3c7;
+  --estado-pendiente-text: #d97706;
+  --estado-en-proceso-bg: #dbeafe;
+  --estado-en-proceso-text: #1d4ed8;
+  --estado-resuelto-bg: #d1fae5;
+  --estado-resuelto-text: #065f46;
+  --estado-cerrado-bg: #f1f5f9;
+  --estado-cerrado-text: #475569;
+
+  /* Variables de color para cada tipo */
+  --tipo-peticion-bg: #eff6ff;
+  --tipo-peticion-text: #1d4ed8;
+  --tipo-queja-bg: #fef2f2;
+  --tipo-queja-text: #b91c1c;
+  --tipo-reclamo-bg: #fffbeb;
+  --tipo-reclamo-text: #b45309;
+  --tipo-sugerencia-bg: #f0fdf4;
+  --tipo-sugerencia-text: #15803d;
+}
+
+/* Clases reutilizables para badges */
+.badge-estado {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  text-transform: capitalize;
+  text-align: center;
+}
+
+.badge-estado.pendiente {
+  background-color: var(--estado-pendiente-bg);
+  color: var(--estado-pendiente-text);
+}
+
+.badge-estado.en_proceso {
+  background-color: var(--estado-en-proceso-bg);
+  color: var(--estado-en-proceso-text);
+}
+
+.badge-estado.resuelto {
+  background-color: var(--estado-resuelto-bg);
+  color: var(--estado-resuelto-text);
+}
+
+.badge-estado.cerrado {
+  background-color: var(--estado-cerrado-bg);
+  color: var(--estado-cerrado-text);
+}
+
+.badge-tipo {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 6px;
+  text-transform: capitalize;
+  text-align: center;
+}
+
+.badge-tipo.peticion {
+  background-color: var(--tipo-peticion-bg);
+  color: var(--tipo-peticion-text);
+}
+
+.badge-tipo.queja {
+  background-color: var(--tipo-queja-bg);
+  color: var(--tipo-queja-text);
+}
+
+.badge-tipo.reclamo {
+  background-color: var(--tipo-reclamo-bg);
+  color: var(--tipo-reclamo-text);
+}
+
+.badge-tipo.sugerencia {
+  background-color: var(--tipo-sugerencia-bg);
+  color: var(--tipo-sugerencia-text);
+}
+
+/* Badges de prioridad */
+.badge-prioridad {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 100px;
+}
+
+.badge-urgente {
+  background: #FCEBEB;
+  color: #501313;
+  border: 1px solid #E24B4A;
+}
+
+.badge-alta {
+  background: #FAEEDA;
+  color: #633806;
+}
+
+.badge-media {
+  background: #E6F1FB;
+  color: #0C447C;
+}
+
+.badge-baja {
+  background: #E1F5EE;
+  color: #085041;
+}

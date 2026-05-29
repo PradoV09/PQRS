@@ -1,0 +1,409 @@
+<div class="portal-layout">
+  <!-- Barra lateral de navegación -->
+  <app-sidebar></app-sidebar>
+
+  <!-- Contenido principal -->
+  <div class="portal-content">
+    <div class="pqrs-list-container">
+      <div class="list-wrapper">
+        
+        <!-- ==============================================
+             1. VISTA DE USUARIO NORMAL (CLIENTE)
+             ============================================== -->
+        <ng-container *ngIf="!isAdmin()">
+          <!-- Encabezado -->
+          <div class="list-header">
+            <div>
+              <h1 class="portal-title">Mis PQRS</h1>
+              <p class="subtitle">Consulta el estado y avance de tus peticiones, quejas, reclamos y sugerencias</p>
+            </div>
+            <a routerLink="/pqrs/crear" class="btn-create" aria-label="Registrar nueva PQRS">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>Registrar PQRS</span>
+            </a>
+          </div>
+
+          <!-- Barra de Filtros Simple -->
+          <div class="filters-bar-user">
+            <div class="filter-group">
+              <label for="userFilterStatus">Filtrar por Estado</label>
+              <div class="select-wrapper">
+                <select id="userFilterStatus" (change)="onStatusFilterChange($event)" [disabled]="loading()">
+                  <option value="">Todos los estados</option>
+                  <option value="pendiente">Pendiente</option>
+                  <option value="en_proceso">En Proceso</option>
+                  <option value="resuelto">Resuelto</option>
+                  <option value="cerrado">Cerrado</option>
+                </select>
+                <div class="select-arrow">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Estado Cargando: Skeletons -->
+          <ng-container *ngIf="loading()">
+            <div class="grid-list">
+              <div class="skeleton-card animate-pulse" *ngFor="let i of [1, 2, 3]">
+                <div class="skeleton-header">
+                  <div class="skeleton-badge"></div>
+                  <div class="skeleton-badge"></div>
+                </div>
+                <div class="skeleton-title"></div>
+                <div class="skeleton-text"></div>
+                <div class="skeleton-footer"></div>
+              </div>
+            </div>
+          </ng-container>
+
+          <!-- Contenido Listo -->
+          <ng-container *ngIf="!loading()">
+            <!-- Estado Vacío -->
+            <div class="empty-state animate-fade-in" *ngIf="pqrsList().length === 0" role="status" aria-live="polite">
+              <div class="empty-illustrations">
+                <div class="circle-illustration">
+                  <svg viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="9" y1="9" x2="15" y2="9"></line>
+                    <line x1="9" y1="13" x2="15" y2="13"></line>
+                    <line x1="9" y1="17" x2="13" y2="17"></line>
+                  </svg>
+                </div>
+              </div>
+              <h3>Aún no tienes PQRS</h3>
+              <p>Aquí verás el historial de tus solicitudes de soporte. Envía tu primera solicitud ahora.</p>
+              <a routerLink="/pqrs/crear" class="btn-create">Registrar primera PQRS</a>
+            </div>
+
+            <!-- Listado de Tarjetas -->
+            <div class="grid-list animate-fade-in" *ngIf="pqrsList().length > 0">
+              <article class="pqrs-card" *ngFor="let pqrs of pqrsList()" (click)="viewDetails(pqrs.id)" role="article">
+                <div class="card-top">
+                  <span class="badge-tipo {{ pqrs.tipo }}">
+                    {{ pqrs.tipo | pqrsType }}
+                  </span>
+                  <app-priority-badge *ngIf="pqrs.prioridad" [prioridad]="pqrs.prioridad"></app-priority-badge>
+                  <span class="badge-estado {{ pqrs.estado }}">
+                    {{ pqrs.estado === 'en_proceso' ? 'En Proceso' : (pqrs.estado | titlecase) }}
+                  </span>
+                </div>
+                
+                <h3 class="card-title" [title]="pqrs.titulo">
+                  {{ pqrs.titulo.length > 60 ? (pqrs.titulo | slice:0:60) + '...' : pqrs.titulo }}
+                </h3>
+                <p class="card-desc">{{ pqrs.descripcion | slice:0:120 }}{{ pqrs.descripcion.length > 120 ? '...' : '' }}</p>
+                
+                <div class="card-footer">
+                  <div class="card-meta">
+                    <span class="meta-item" title="Fecha de creación">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                      {{ pqrs.createdAt | date: 'dd/MM/yyyy' }}
+                    </span>
+                    <span class="meta-item" title="Archivos adjuntos" *ngIf="pqrs._count?.attachments">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                      {{ pqrs._count?.attachments }}
+                    </span>
+                    <span class="meta-item" title="Respuestas" *ngIf="pqrs._count?.respuestas">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+                      {{ pqrs._count?.respuestas }}
+                    </span>
+                  </div>
+                  
+                  <button class="btn-detail-link" (click)="viewDetails(pqrs.id); $event.stopPropagation()">
+                    Ver detalle &rarr;
+                  </button>
+                </div>
+              </article>
+            </div>
+          </ng-container>
+        </ng-container>
+
+        <!-- ==============================================
+             2. VISTA DE ADMINISTRADOR
+             ============================================== -->
+        <ng-container *ngIf="isAdmin()">
+          <!-- Encabezado -->
+          <div class="admin-header">
+            <div>
+              <h1 class="portal-title">Gestión de PQRS</h1>
+              <p class="subtitle">Panel de control administrativo para dar respuesta y seguimiento a las PQRS globales</p>
+            </div>
+          </div>
+
+          <!-- Panel de Estadísticas Inline -->
+          <app-pqrs-stats *ngIf="stats()" [stats]="stats()!"></app-pqrs-stats>
+
+          <!-- Panel de Filtros Avanzados -->
+          <div class="filters-panel-admin">
+            <h3 class="filters-title">Filtros y Búsqueda Avanzada</h3>
+            <div class="filters-grid-admin">
+              <!-- Búsqueda -->
+              <div class="filter-group col-span-2">
+                <label for="adminSearch">Buscar por palabra clave</label>
+                <div class="input-search-wrapper">
+                  <input
+                    id="adminSearch"
+                    type="text"
+                    [value]="searchQuery()"
+                    (input)="onSearchInput($event)"
+                    placeholder="Buscar por título o descripción…"
+                  />
+                  <span class="search-icon">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                  </span>
+                </div>
+              </div>
+
+              <!-- Select Tipo -->
+              <div class="filter-group">
+                <label for="adminFilterType">Tipo</label>
+                <div class="select-wrapper">
+                  <select id="adminFilterType" (change)="onTypeFilterChange($event)">
+                    <option value="">Todos los tipos</option>
+                    <option *ngFor="let t of pqrsTypes" [value]="t">{{ t | pqrsType }}</option>
+                  </select>
+                  <div class="select-arrow">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Select Estado -->
+              <div class="filter-group">
+                <label for="adminFilterStatus">Estado</label>
+                <div class="select-wrapper">
+                  <select id="adminFilterStatus" (change)="onStatusFilterChange($event)">
+                    <option value="">Todos los estados</option>
+                    <option *ngFor="let st of pqrsStatuses" [value]="st">
+                      {{ st === 'en_proceso' ? 'En Proceso' : (st | titlecase) }}
+                    </option>
+                  </select>
+                  <div class="select-arrow">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Select Prioridad -->
+              <div class="filter-group">
+                <label for="adminFilterPriority">Prioridad</label>
+                <div class="select-wrapper">
+                  <select id="adminFilterPriority" (change)="onPriorityFilterChange($event)">
+                    <option value="">Todas las prioridades</option>
+                    <option *ngFor="let opt of priorityOptions" [value]="opt.value">{{ opt.label }}</option>
+                  </select>
+                  <div class="select-arrow">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Fecha Desde -->
+              <div class="filter-group">
+                <label for="adminDateDesde">Fecha desde</label>
+                <input
+                  id="adminDateDesde"
+                  type="date"
+                  [value]="fechaDesde()"
+                  (change)="onDateChange('desde', $event)"
+                />
+              </div>
+
+              <!-- Fecha Hasta -->
+              <div class="filter-group">
+                <label for="adminDateHasta">Fecha hasta</label>
+                <input
+                  id="adminDateHasta"
+                  type="date"
+                  [value]="fechaHasta()"
+                  (change)="onDateChange('hasta', $event)"
+                />
+              </div>
+
+              <!-- Ordenar Por -->
+              <div class="filter-group">
+                <label for="adminSortBy">Ordenar por</label>
+                <div class="select-wrapper">
+                  <select id="adminSortBy" (change)="onSortChange($event)">
+                    <option value="createdAt">Fecha de creación</option>
+                    <option value="updatedAt">Fecha de actualización</option>
+                    <option value="estado">Estado</option>
+                  </select>
+                  <div class="select-arrow">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sentido de Ordenación -->
+              <div class="filter-group">
+                <label for="adminSortOrder">Orden</label>
+                <div class="select-wrapper">
+                  <select id="adminSortOrder" (change)="onSortOrderChange($event)">
+                    <option value="DESC">Descendente (Recientes)</option>
+                    <option value="ASC">Ascendente (Antiguos)</option>
+                  </select>
+                  <div class="select-arrow">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabla de Datos -->
+          <div class="table-container animate-fade-in">
+            <!-- Spinner Interno al recargar -->
+            <div class="table-loading-overlay" *ngIf="loading()">
+              <div class="spinner-large"></div>
+              <p>Actualizando registros...</p>
+            </div>
+
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Usuario</th>
+                  <th>Título</th>
+                  <th>Tipo</th>
+                  <th>Prioridad</th>
+                  <th>Estado</th>
+                  <th class="text-center">Adjuntos</th>
+                  <th class="text-center">Respuestas</th>
+                  <th>Creación</th>
+                  <th class="text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Estado sin resultados -->
+                <tr *ngIf="!loading() && pqrsList().length === 0">
+                  <td colspan="10" class="table-empty-row">
+                    <div class="table-empty-content" role="status" aria-live="polite">
+                      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                      <p>No se encontraron solicitudes con los criterios de búsqueda elegidos.</p>
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Filas de datos -->
+                <tr *ngFor="let pqrs of pqrsList(); let idx = index" [class.row-urgente]="pqrs.prioridad === PqrsPriority.URGENTE">
+                  <td class="cell-index">{{ (currentPage() - 1) * pageSize() + idx + 1 }}</td>
+                  <td class="cell-user">
+                    <div class="user-cell-content">
+                      <span class="user-avatar-small">{{ pqrs.user?.nombre?.charAt(0)?.toUpperCase() }}</span>
+                      <span class="user-name" [title]="pqrs.user?.nombre">{{ pqrs.user?.nombre }}</span>
+                    </div>
+                  </td>
+                  <td class="cell-title">
+                    <span class="title-text" [title]="pqrs.titulo">{{ pqrs.titulo }}</span>
+                  </td>
+                  <td>
+                    <span class="badge-tipo {{ pqrs.tipo }}">{{ pqrs.tipo | pqrsType }}</span>
+                  </td>
+                  <td>
+                    <app-priority-badge *ngIf="pqrs.prioridad" [prioridad]="pqrs.prioridad"></app-priority-badge>
+                  </td>
+                  <td>
+                    <span class="badge-estado {{ pqrs.estado }}">
+                      {{ pqrs.estado === 'en_proceso' ? 'En Proceso' : (pqrs.estado | titlecase) }}
+                    </span>
+                  </td>
+                  <td class="text-center font-semibold text-slate-600">{{ pqrs._count?.attachments || 0 }}</td>
+                  <td class="text-center font-semibold text-slate-600">{{ pqrs._count?.respuestas || 0 }}</td>
+                  <td class="cell-date">{{ pqrs.createdAt | date: 'dd/MM/yyyy' }}</td>
+                  <td class="text-right">
+                    <div class="actions-cell-wrapper">
+                      <!-- Select Inline para cambio de estado rápido -->
+                      <ng-container *ngIf="getTransitions(pqrs.estado).length > 0; else noTransitions">
+                        <div class="select-inline-wrapper">
+                          <select
+                            class="select-inline-status"
+                            [disabled]="updatingStatusId() === pqrs.id"
+                            (change)="onInlineStatusSelect(pqrs.id, $event)"
+                          >
+                            <option value="" disabled selected>Cambiar estado...</option>
+                            <option *ngFor="let trans of getTransitions(pqrs.estado)" [value]="trans">
+                              {{ trans === 'en_proceso' ? 'En Proceso' : (trans | titlecase) }}
+                            </option>
+                          </select>
+                        </div>
+                        <button
+                          class="btn-action-update-inline"
+                          [disabled]="!inlineSelectedStatus[pqrs.id] || updatingStatusId() === pqrs.id"
+                          (click)="onUpdateStatusInline(pqrs.id)"
+                          title="Actualizar estado ahora"
+                        >
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        </button>
+                      </ng-container>
+                      <ng-template #noTransitions>
+                        <span class="label-final-status" title="Este estado es definitivo">Cerrado</span>
+                      </ng-template>
+
+                      <!-- Enlace Ver Detalle -->
+                      <button class="btn-action-view" (click)="viewDetails(pqrs.id)" title="Ver hilo de detalles y responder">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </ng-container>
+
+        <!-- ==============================================
+             3. PAGINACIÓN (COMPARTIDA)
+             ============================================== -->
+        <div class="pagination-bar" *ngIf="totalPages() > 1 && !loading()">
+          <span class="pagination-info">
+            Mostrando <strong>{{ (currentPage() - 1) * pageSize() + 1 }}</strong> - 
+            <strong>{{ Math.min(currentPage() * pageSize(), totalItems()) }}</strong> de 
+            <strong>{{ totalItems() }}</strong> registros
+          </span>
+
+          <div class="pagination-controls">
+            <!-- Botón Anterior -->
+            <button
+              class="btn-page-nav"
+              [disabled]="currentPage() === 1"
+              (click)="prevPage()"
+              aria-label="Ir a página anterior"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              <span>Anterior</span>
+            </button>
+
+            <!-- Números de Página -->
+            <div class="page-numbers">
+              <button
+                *ngFor="let p of [].constructor(totalPages()); let idx = index"
+                class="btn-page-num"
+                [class.active]="currentPage() === idx + 1"
+                (click)="goToPage(idx + 1)"
+              >
+                {{ idx + 1 }}
+              </button>
+            </div>
+
+            <!-- Botón Siguiente -->
+            <button
+              class="btn-page-nav"
+              [disabled]="currentPage() === totalPages()"
+              (click)="nextPage()"
+              aria-label="Ir a página siguiente"
+            >
+              <span>Siguiente</span>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>

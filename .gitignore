@@ -1,0 +1,42 @@
+# Node modules
+node_modules/
+**/node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build
+dist/
+build/
+coverage/
+
+# Environment variables
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# NestJS
+pqrs-backend/dist/
+pqrs-backend/node_modules/
+
+# Angular
+pqrs-frontend/.angular/
+pqrs-frontend/dist/
+pqrs-frontend/node_modules/
+
+# Dependency lock optional
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml

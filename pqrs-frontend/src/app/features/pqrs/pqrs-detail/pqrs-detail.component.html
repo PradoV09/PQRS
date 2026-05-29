@@ -1,0 +1,277 @@
+<div class="portal-layout">
+  <!-- Barra lateral de navegación -->
+  <app-sidebar></app-sidebar>
+
+  <!-- Contenido principal -->
+  <div class="portal-content">
+    <div class="pqrs-detail-container">
+      <div class="detail-wrapper">
+        
+        <!-- Enlace de regreso -->
+        <a routerLink="/pqrs" class="btn-back" aria-label="Volver al listado de solicitudes">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          <span>Volver al listado</span>
+        </a>
+
+        <!-- Estado Cargando -->
+        <div class="loading-state" *ngIf="loading()">
+          <div class="spinner-large"></div>
+          <p>Cargando los detalles de la solicitud...</p>
+        </div>
+
+        <!-- Estado Listo -->
+        <ng-container *ngIf="!loading()">
+          
+          <!-- Estado No Encontrado -->
+          <div class="error-state animate-fade-in" *ngIf="isNotFound()" role="alert">
+            <div class="error-icon">
+              <svg viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+            </div>
+            <h2>PQRS No Encontrada</h2>
+            <p>La solicitud que intentas consultar no existe o no tienes los privilegios requeridos para visualizarla.</p>
+            <a routerLink="/pqrs" class="btn-primary">Ir a mis PQRS</a>
+          </div>
+
+          <!-- Tarjeta de Detalles del PQRS -->
+          <div class="detail-card animate-slide-up" *ngIf="pqrs()">
+            
+            <!-- [1] ENCABEZADO -->
+            <header class="card-header">
+              <div class="header-badges">
+                <span class="badge-tipo {{ pqrs()!.tipo }}">
+                  {{ pqrs()!.tipo | pqrsType }}
+                </span>
+                <app-priority-badge *ngIf="pqrs()!.prioridad" [prioridad]="pqrs()!.prioridad"></app-priority-badge>
+                <span class="badge-estado {{ pqrs()!.estado }}">
+                  {{ statusLabels[pqrs()!.estado] }}
+                </span>
+              </div>
+              <h1 class="pqrs-title">{{ pqrs()!.titulo }}</h1>
+              
+              <div class="header-meta">
+                <span>Registrado el {{ pqrs()!.createdAt | date: 'dd/MM/yyyy, h:mm a' }}</span>
+                <span class="meta-separator" *ngIf="pqrs()!.fechaLimite && !isClosed()">&bull;</span>
+                <span *ngIf="pqrs()!.fechaLimite && !isClosed()" class="sla-info" [class.vencida]="esSlaVencido">
+                  Responder antes del {{ pqrs()!.fechaLimite | date:'dd/MM/yyyy' }}
+                  <span *ngIf="esSlaVencido" class="vencida-label">(vencida)</span>
+                </span>
+                <span class="meta-separator" *ngIf="pqrs()!.resolvedAt">&bull;</span>
+                <span *ngIf="pqrs()!.resolvedAt" class="resolved-at">Resuelta el {{ pqrs()!.resolvedAt | date: 'dd/MM/yyyy' }}</span>
+                <span class="meta-separator" *ngIf="isAdmin() && pqrs()!.user">&bull;</span>
+                <span class="creator-link" *ngIf="isAdmin() && pqrs()!.user" title="Usuario propietario">
+                  Solicitante: <strong>{{ pqrs()!.user?.nombre }}</strong> ({{ pqrs()!.user?.email }})
+                </span>
+              </div>
+            </header>
+
+            <!-- [2] DESCRIPCIÓN -->
+            <section class="card-section">
+              <h3 class="section-title">Detalles de la Solicitud</h3>
+              <p class="description-text">{{ pqrs()!.descripcion }}</p>
+            </section>
+
+            <!-- [3] ARCHIVOS ADJUNTOS -->
+            <section class="card-section" *ngIf="pqrs()!.attachments && pqrs()!.attachments.length > 0">
+              <h3 class="section-title">Archivos de Soporte ({{ pqrs()!.attachments.length }})</h3>
+              <app-attachment-gallery
+                [attachments]="pqrs()!.attachments"
+                [canDelete]="(isOwner() || isAdmin()) && !esEstadoFinal"
+                (deleted)="onAttachmentDeleted($event)">
+              </app-attachment-gallery>
+            </section>
+
+            <!-- [4b] PANEL DE CAMBIO DE PRIORIDAD (SOLO ADMIN, NO CERRADA) -->
+            <section class="card-section admin-priority-section" *ngIf="isAdmin() && !isClosed()">
+              <h3 class="section-title admin-title">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+                <span>Cambiar prioridad</span>
+              </h3>
+              <div class="admin-controls-wrapper">
+                <div class="priority-change-box">
+                  <div class="select-wrapper">
+                    <select
+                      [disabled]="updatingPriority()"
+                      [ngModel]="nuevaPrioridad()"
+                      (ngModelChange)="nuevaPrioridad.set($event)"
+                    >
+                      <option *ngFor="let opt of priorityOptions" [ngValue]="opt.value">
+                        {{ opt.label }} — {{ priorityConfig[opt.value].slaLabel }}
+                      </option>
+                    </select>
+                    <div class="select-arrow">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </div>
+                  </div>
+                  <button
+                    class="btn-update-status"
+                    [disabled]="updatingPriority() || nuevaPrioridad() === pqrs()!.prioridad"
+                    (click)="cambiarPrioridad()"
+                  >
+                    <span class="spinner-small" *ngIf="updatingPriority()"></span>
+                    <span *ngIf="!updatingPriority()">Actualizar prioridad</span>
+                    <span *ngIf="updatingPriority()">Guardando…</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <!-- [4] PANEL DE CAMBIO DE ESTADO (SOLO ADMIN) -->
+            <section class="card-section admin-status-section" *ngIf="isAdmin()">
+              <h3 class="section-title admin-title">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                <span>Gestión de Estado (Administrador)</span>
+              </h3>
+              
+              <div class="admin-controls-wrapper">
+                <ng-container *ngIf="transicionesDisponibles.length > 0; else finalStatusAlert">
+                  <div class="status-change-box">
+                    <div class="select-wrapper">
+                      <select
+                        [disabled]="updatingStatus()"
+                        [value]="selectedNewStatus()"
+                        (change)="selectedNewStatus.set($any($event.target).value)"
+                      >
+                        <option value="" disabled selected>Cambiar estado de solicitud a...</option>
+                        <option *ngFor="let status of transicionesDisponibles" [value]="status">
+                          {{ statusLabels[status] }}
+                        </option>
+                      </select>
+                      <div class="select-arrow">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                      </div>
+                    </div>
+                    <button
+                      class="btn-update-status"
+                      [disabled]="!selectedNewStatus() || updatingStatus()"
+                      (click)="onUpdateStatus()"
+                    >
+                      <span class="spinner-small" *ngIf="updatingStatus()"></span>
+                      <span *ngIf="!updatingStatus()">Actualizar Estado</span>
+                    </button>
+                  </div>
+                </ng-container>
+                <ng-template #finalStatusAlert>
+                  <div class="status-final-alert">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                    <span>Estado final — sin transiciones disponibles</span>
+                  </div>
+                </ng-template>
+              </div>
+            </section>
+
+            <!-- [5] HILO DE RESPUESTAS -->
+            <section class="card-section answers-section">
+              <h3 class="section-title">Respuestas ({{ pqrs()!.respuestas?.length || 0 }})</h3>
+              
+              <!-- Respuestas Vacías -->
+              <div class="empty-answers" *ngIf="!pqrs()!.respuestas || pqrs()!.respuestas!.length === 0">
+                <p>Aún no se registran respuestas en el hilo de esta solicitud.</p>
+              </div>
+
+              <!-- Chat List -->
+              <div class="chat-thread-container" *ngIf="pqrs()!.respuestas && pqrs()!.respuestas!.length > 0">
+                <div
+                  *ngFor="let resp of pqrs()!.respuestas"
+                  class="chat-bubble-wrapper"
+                  [class.admin-msg]="resp.esAdmin"
+                  [class.user-msg]="!resp.esAdmin"
+                >
+                  <div class="chat-bubble">
+                    <div class="bubble-header">
+                      <span class="author-name">
+                        {{ resp.esAdmin ? 'Administrador' : (resp.autor?.nombre || 'Usuario') }}
+                      </span>
+                      <span class="msg-date" [title]="resp.createdAt | date: 'dd/MM/yyyy HH:mm'">
+                        &bull; {{ resp.createdAt | relativeDate }}
+                      </span>
+                    </div>
+                    <p class="bubble-content">{{ resp.contenido }}</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- [6] FORMULARIO DE RESPUESTA -->
+            <section class="card-section reply-form-section" *ngIf="canRespond()">
+              <h3 class="section-title">Escribir una Respuesta</h3>
+              
+              <div class="reply-form-box">
+                <textarea
+                  rows="4"
+                  [value]="respuestaContenido()"
+                  (input)="respuestaContenido.set($any($event.target).value)"
+                  placeholder="Redacta la respuesta que deseas agregar a esta solicitud..."
+                  [disabled]="sendingRespuesta()"
+                  maxLength="2000"
+                ></textarea>
+                
+                <div class="form-bottom-actions">
+                  <span class="char-counter" [class.limit-reached]="respuestaContenido().length >= 2000">
+                    {{ respuestaContenido().length }} / 2000 caracteres
+                  </span>
+                  
+                  <button
+                    class="btn-send-reply"
+                    [disabled]="respuestaContenido().trim().length < 5 || sendingRespuesta()"
+                    (click)="submitRespuesta()"
+                  >
+                    <span class="spinner-small" *ngIf="sendingRespuesta()"></span>
+                    <span>Enviar Respuesta</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <!-- [7] HISTORIAL DE TRAZABILIDAD -->
+            <section class="card-section historial-section">
+              <h3 class="section-title">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                Historial de cambios
+              </h3>
+
+              <div class="historial-loading" *ngIf="loadingHistorial()">
+                <div class="spinner-small"></div>
+                <span>Cargando historial…</span>
+              </div>
+
+              <app-pqrs-timeline
+                *ngIf="!loadingHistorial()"
+                [eventos]="historial()"
+                [isAdmin]="isAdmin()"
+              ></app-pqrs-timeline>
+            </section>
+
+            <!-- [8] ACCIONES ADICIONALES (ELIMINAR) -->
+            <footer class="card-footer-actions" *ngIf="(isOwner() || isAdmin()) && !isClosed()">
+              <button
+                class="btn-delete-pqrs"
+                [disabled]="updatingStatus() || sendingRespuesta()"
+                (click)="onDeletePqrs()"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  <line x1="10" y1="11" x2="10" y2="17"></line>
+                  <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+                <span>Eliminar esta PQRS</span>
+              </button>
+            </footer>
+
+          </div>
+        </ng-container>
+
+      </div>
+    </div>
+  </div>
+</div>
