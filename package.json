@@ -1,0 +1,29 @@
+{
+  "name": "pqrs",
+  "version": "1.0.0",
+  "description": "Sistema PQRS – monorepo raíz (backend NestJS + frontend Angular + PostgreSQL en Docker)",
+  "private": true,
+  "scripts": {
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+
+    "install:backend": "npm install --prefix pqrs-backend",
+    "install:frontend": "npm install --prefix pqrs-frontend",
+    "install:all": "npm run install:backend && npm run install:frontend",
+
+    "migrate": "npm run --prefix pqrs-backend migration:run",
+    "migrate:revert": "npm run --prefix pqrs-backend migration:revert",
+    "seed": "npm run --prefix pqrs-backend seed",
+
+    "dev:backend": "npm run --prefix pqrs-backend start:dev",
+    "dev:frontend": "npm run --prefix pqrs-frontend start",
+    "dev": "concurrently --kill-others-on-fail --names \"BACKEND,FRONTEND\" --prefix-colors \"cyan,magenta\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+
+    "setup": "npm run db:up && npm run install:all && npm run migrate",
+    "start": "npm run db:up && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
