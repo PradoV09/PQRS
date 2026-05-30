@@ -11,7 +11,8 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const router = inject(Router);
   const toastService = inject(ToastService);
 
-  const isApiUrl = req.url.startsWith(environment.apiUrl);
+  // Detecta si es una petición al API (absoluta o relativa)
+  const isApiUrl = req.url.startsWith(environment.apiUrl) || req.url.startsWith('/api') || !req.url.startsWith('http');
   const token = authService.getAccessToken();
 
   const authReq = (token && isApiUrl)

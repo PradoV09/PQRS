@@ -27,7 +27,7 @@ export class PqrsQueryDto {
   @Type(() => Number)
   @IsInt({ message: 'El límite debe ser un número entero.' })
   @Min(1, { message: 'El límite mínimo es 1.' })
-  @Max(50, { message: 'El límite máximo es 50.' })
+  @Max(100, { message: 'El límite máximo es 100.' })
   limit?: number = 10;
 
   @IsOptional()
@@ -45,6 +45,10 @@ export class PqrsQueryDto {
   @IsOptional()
   @IsDateString({}, { message: 'La fecha hasta debe tener un formato de fecha válido.' })
   fechaHasta?: string;
+
+  @IsOptional()
+  @IsString()
+  radicado?: string;
 
   @IsOptional()
   @IsIn(['createdAt', 'updatedAt', 'estado'], { message: 'El campo de ordenamiento no es válido.' })

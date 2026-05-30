@@ -15,8 +15,10 @@ import {
   Query,
   Res,
   BadRequestException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { Public } from '../common/decorators/public.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -34,9 +36,10 @@ import { CreatePqrsDto } from './dto/create-pqrs.dto';
 import { CreateRespuestaDto } from './dto/create-respuesta.dto';
 import { UpdatePqrsStatusDto } from './dto/update-pqrs-status.dto';
 import { UpdatePriorityDto } from './dto/update-priority.dto';
+import { AssignPqrsDto } from './dto/assign-pqrs.dto';
 import { PqrsQueryDto } from './dto/pqrs-query.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/entities/user.entity';
 import { PqrsStatus } from '../common/enums/pqrs-status.enum';
@@ -54,6 +57,20 @@ export class PqrsController {
     private readonly historialService: HistorialService,
     private readonly filesService: FilesService,
   ) { }
+
+  /**
+   * Seguimiento público de PQRS por número de radicado.
+   * No requiere autenticación.
+   */
+  @Public()
+  @Get('track/:radicado')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Consultar estado de una PQRS por número de radicado (Público)' })
+  @ApiResponse({ status: 200, description: 'Estado de la PQRS recuperado.' })
+  @ApiResponse({ status: 404, description: 'Radicado no encontrado.' })
+  async trackByRadicado(@Param('radicado') radicado: string) {
+    return this.pqrsService.trackByRadicado(radicado);
+  }
 
   /**
    * Crear una nueva PQRS. Soporta subida de hasta 5 archivos adjuntos.
@@ -102,11 +119,11 @@ export class PqrsController {
   @Get('stats')
   @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Obtener estadísticas generales de PQRS (Solo Admin)' })
+  @ApiOperation({ summary: 'Obtener estadísticas generales de PQRS (Admin y Funcionarios)' })
   @ApiResponse({ status: 200, description: 'Estadísticas recuperadas exitosamente.' })
   @ApiResponse({ status: 403, description: 'Acceso denegado.' })
   async getStats(@Req() req: any) {
-    const userRole = req.user.rol;
+    const userRole = req.user.rol ?? req.user.role;
     return this.pqrsService.getStats(userRole);
   }
 
@@ -121,8 +138,13 @@ export class PqrsController {
   @ApiResponse({ status: 200, description: 'Listado recuperado exitosamente.' })
   async findAll(@Query() queryDto: PqrsQueryDto, @Req() req: any) {
     const userId = req.user.id;
-    const userRole = req.user.rol;
-    return this.pqrsService.findAll(queryDto, userId, userRole);
+    const userRole = req.user.rol ?? req.user.role;
+    try {
+      return await this.pqrsService.findAll(queryDto, userId, userRole);
+    } catch (error) {
+      console.error(' [DEBUG] Error real detectado en PqrsController.findAll:', error);
+      throw error; // Re-lanzamos para que siga su flujo normal, pero ya lo logueamos
+    }
   }
 
   /**
@@ -136,7 +158,7 @@ export class PqrsController {
   @ApiResponse({ status: 404, description: 'PQRS no encontrada.' })
   async getHistorial(@Param('id') id: string, @Req() req: any) {
     const userId = req.user.id;
-    const userRole = req.user.rol;
+    const userRole = req.user.rol ?? req.user.role;
     await this.pqrsService.findOne(id, userId, userRole);
     return this.historialService.obtenerPorPqrs(id, userRole);
   }
@@ -152,7 +174,7 @@ export class PqrsController {
   @ApiResponse({ status: 404, description: 'PQRS no encontrada.' })
   async findOne(@Param('id') id: string, @Req() req: any) {
     const userId = req.user.id;
-    const userRole = req.user.rol;
+    const userRole = req.user.rol ?? req.user.role;
     return this.pqrsService.findOne(id, userId, userRole);
   }
 
@@ -172,7 +194,7 @@ export class PqrsController {
     @Req() req: any,
   ) {
     const userId = req.user.id;
-    const userRole = req.user.rol;
+    const userRole = req.user.rol ?? req.user.role;
     return this.pqrsService.createRespuesta(id, createRespuestaDto, userId, userRole);
   }
 
@@ -197,7 +219,7 @@ export class PqrsController {
     @UploadedFiles(new FileTypeValidationPipe()) files: Express.Multer.File[],
   ) {
     const userId = req.user.id;
-    const userRole = req.user.rol;
+    const userRole = req.user.rol ?? req.user.role;
 
     const pqrs = await this.pqrsService.findOne(id, userId, userRole);
 
@@ -238,7 +260,7 @@ export class PqrsController {
     @Req() req: any,
   ) {
     const adminUserId = req.user.id;
-    const adminRole = req.user.rol;
+    const adminRole = req.user.rol ?? req.user.role;
     const adminActor = { id: req.user.id, nombre: req.user.nombre };
     return this.pqrsService.updateStatus(id, updateStatusDto, adminUserId, adminRole, adminActor);
   }
@@ -259,7 +281,7 @@ export class PqrsController {
     @Body() updatePriorityDto: UpdatePriorityDto,
     @Req() req: any,
   ) {
-    const adminRole = req.user.rol;
+    const adminRole = req.user.rol ?? req.user.role;
     const adminActor = { id: req.user.id, nombre: req.user.nombre };
     return this.pqrsService.updatePriority(id, updatePriorityDto, adminRole, adminActor);
   }
@@ -276,7 +298,7 @@ export class PqrsController {
   @ApiResponse({ status: 404, description: 'PQRS no encontrada.' })
   async remove(@Param('id') id: string, @Req() req: any) {
     const userId = req.user.id;
-    const userRole = req.user.rol;
+    const userRole = req.user.rol ?? req.user.role;
     const actor = { id: req.user.id, nombre: req.user.nombre };
     return this.pqrsService.remove(id, userId, userRole, actor);
   }
@@ -297,11 +319,12 @@ export class PqrsController {
     @Res() res: any,
   ) {
     const userId = req.user.id;
-    const userRole = req.user.rol;
+    const userRole = req.user.rol ?? req.user.role;
 
     const { absolutePath, filename, mimetype } =
       await this.pqrsService.getAttachmentPath(id, attId, userId, userRole);
 
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     // Configurar cabeceras de respuesta seguras para descarga
     res.setHeader('Content-Type', mimetype);
     res.setHeader(
@@ -310,5 +333,27 @@ export class PqrsController {
     );
 
     return res.sendFile(absolutePath);
+  }
+
+  /**
+   * Asignar una PQRS a un supervisor o área responsable.
+   * Solo Administrador puede asignar.
+   */
+  @Patch(':id/assign')
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Asignar una PQRS a un supervisor o área responsable' })
+  @ApiResponse({ status: 200, description: 'PQRS asignada exitosamente.' })
+  @ApiResponse({ status: 400, description: 'PQRS cerrada o datos inválidos.' })
+  @ApiResponse({ status: 403, description: 'Acceso denegado (no es administrador).' })
+  @ApiResponse({ status: 404, description: 'PQRS no encontrada.' })
+  async assignPqrs(
+    @Param('id') id: string,
+    @Body() assignDto: AssignPqrsDto,
+    @Req() req: any,
+  ) {
+    const adminRole = req.user.rol ?? req.user.role;
+    const adminActor = { id: req.user.id, nombre: req.user.nombre };
+    return this.pqrsService.assignPqrs(id, assignDto, adminRole, adminActor);
   }
 }

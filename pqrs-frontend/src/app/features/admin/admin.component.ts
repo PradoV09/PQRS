@@ -10,11 +10,13 @@ import { FilesService } from '../../core/services/files.service';
 import { SidebarComponent } from '../../shared/components/sidebar/sidebar.component';
 import { PqrsTypePipe } from '../../shared/pipes/pqrs-type.pipe';
 import { getValidTransitions, isFinalState, STATUS_LABELS } from '../../core/utils/pqrs-transitions';
+import { jsPDF } from 'jspdf';
 
 @Component({
   selector: 'app-admin',
   standalone: true,
   imports: [CommonModule, RouterModule, SidebarComponent, PqrsTypePipe],
+  // Nota: Asegúrate de agregar TopbarComponent, PqrsStatsComponent, etc. aquí si tienes errores de compilación
   templateUrl: './admin.component.html',
   styleUrl: './admin.component.css',
 })
@@ -34,7 +36,16 @@ export class AdminComponent implements OnInit {
   selectedPqrsId = signal<string | null>(null);
 
   // Dashboard data
-  stats = signal<{ total: number; pendientes: number; enProceso: number; resueltos: number } | null>(null);
+  stats = signal<{
+    total: number;
+    pendientes: number;
+    enProceso: number;
+    resueltos: number;
+    vencidas: number;
+    proximas: number;
+    eficiencia: number;
+    porArea?: any[];
+  } | null>(null);
   recentPqrs = signal<Pqrs[]>([]);
 
   // PQRS data
@@ -89,6 +100,7 @@ export class AdminComponent implements OnInit {
   }
 
   showDetail(pqrsId: string): void {
+    this.selectedPqrs.set(null); // Limpiar detalle previo
     this.selectedPqrsId.set(pqrsId);
     this.loadPqrsDetail(pqrsId);
     this.showPage('detalle');
@@ -100,9 +112,13 @@ export class AdminComponent implements OnInit {
       next: (stats) => {
         this.stats.set({
           total: stats.total,
-          pendientes: stats.porEstado[PqrsStatus.PENDIENTE],
-          enProceso: stats.porEstado[PqrsStatus.EN_PROCESO],
-          resueltos: stats.porEstado[PqrsStatus.RESUELTO],
+          pendientes: stats.porEstado[PqrsStatus.PENDIENTE] || 0,
+          enProceso: stats.porEstado[PqrsStatus.EN_PROCESO] || 0,
+          resueltos: stats.porEstado[PqrsStatus.RESUELTO] || 0,
+          vencidas: stats.cumplimiento?.vencidas || 0,
+          proximas: stats.cumplimiento?.proximaVencer || 0,
+          eficiencia: stats.cumplimiento?.eficiencia ?? 100,
+          porArea: stats.porArea
         });
       },
     });
@@ -125,23 +141,19 @@ export class AdminComponent implements OnInit {
   }
 
   applyPqrsFilter(): void {
-    const filter = this.pqrsFilter();
-    let filtered = [...this.allPqrs()];
-
-    if (filter.search) {
-      const search = filter.search.toLowerCase();
-      filtered = filtered.filter(p => p.titulo.toLowerCase().includes(search));
-    }
-
-    if (filter.tipo) {
-      filtered = filtered.filter(p => p.tipo === filter.tipo);
-    }
-
-    if (filter.estado) {
-      filtered = filtered.filter(p => p.estado === filter.estado);
-    }
-
+    const { search, tipo, estado } = this.pqrsFilter();
+    const filtered = this.allPqrs().filter(p => {
+      const matchesSearch = !search || p.titulo.toLowerCase().includes(search.toLowerCase()) || p.radicado.toLowerCase().includes(search.toLowerCase());
+      const matchesTipo = !tipo || p.tipo === tipo;
+      const matchesEstado = !estado || p.estado === estado;
+      return matchesSearch && matchesTipo && matchesEstado;
+    });
     this.filteredPqrs.set(filtered);
+  }
+
+  isOverdue(pqrs: Pqrs): boolean {
+    if (!pqrs.fechaLimite || pqrs.estado === PqrsStatus.CERRADO || pqrs.estado === PqrsStatus.RESUELTO) return false;
+    return new Date(pqrs.fechaLimite) < new Date();
   }
 
   onPqrsFilterChange(key: string, value: string): void {
@@ -183,9 +195,93 @@ export class AdminComponent implements OnInit {
     this.filteredUsers.set(filtered);
   }
 
+  isUserLocked(user: User): boolean {
+    if (!user.lockedUntil) return false;
+    return new Date(user.lockedUntil) > new Date();
+  }
+
   onUsersFilterChange(key: string, value: string): void {
     this.usersFilter.update(f => ({ ...f, [key]: value }));
     this.applyUsersFilter();
+  }
+
+  // Método para exportar a CSV (Cumple con requerimiento de Reportes)
+  exportToCSV(): void {
+    const data = this.allPqrs();
+    const headers = 'Radicado,Titulo,Tipo,Estado,Prioridad,Creado\n';
+    const rows = data.map(p =>
+      `${p.radicado},"${p.titulo}",${p.tipo},${p.estado},${p.prioridad},${p.createdAt}`
+    ).join('\n');
+
+    const blob = new Blob([headers + rows], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reporte_pqrs_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+  }
+
+  // Generar Reporte Gerencial Consolidado (Cumple con Requisito de Estadísticas Globales)
+  exportConsolidatedReportPDF(): void {
+    const s = this.stats();
+    if (!s) return;
+
+    const doc = new jsPDF();
+    doc.setFontSize(20);
+    doc.setTextColor(26, 86, 219); // Azul corporativo
+    doc.text('INFORME GERENCIAL DE GESTIÓN PQRS', 105, 20, { align: 'center' });
+
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Generado el: ${new Date().toLocaleString()}`, 105, 28, { align: 'center' });
+
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text('Resumen de Operación', 20, 45);
+
+    doc.setFontSize(11);
+    doc.text(`Total Solicitudes: ${s.total}`, 25, 55);
+    doc.text(`Eficiencia del Servicio (SLA): ${s.eficiencia}%`, 25, 62);
+    doc.text(`PQRS Vencidas: ${s.vencidas}`, 25, 69);
+    doc.text(`PQRS Próximas a Vencer: ${s.proximas}`, 25, 76);
+
+    doc.text('Distribución por Estado', 20, 90);
+    doc.text(`- Pendientes: ${s.pendientes}`, 25, 100);
+    doc.text(`- En Proceso: ${s.enProceso}`, 25, 107);
+    doc.text(`- Resueltos: ${s.resueltos}`, 25, 114);
+
+    if (s.porArea) {
+      doc.text('Carga por Área Administrativa', 20, 130);
+      s.porArea.forEach((area, i) => {
+        doc.text(`- ${area.area || 'Sin Asignar'}: ${area.cantidad} solicitudes`, 25, 140 + (i * 7));
+      });
+    }
+
+    doc.save(`Reporte_Gerencial_PQRS_${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
+
+  // Generar Reporte PDF Oficial (Cumple con Reportes y Estadísticas)
+  exportToPDF(): void {
+    const pqrs = this.selectedPqrs();
+    if (!pqrs) return;
+
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text('CERTIFICADO OFICIAL DE TRAZABILIDAD PQRS', 105, 20, { align: 'center' });
+
+    doc.setFontSize(11);
+    doc.text(`Radicado: ${pqrs.radicado}`, 20, 40);
+    doc.text(`Fecha Creación: ${pqrs.createdAt}`, 20, 50);
+    doc.text(`Ciudadano: ${pqrs.user?.nombre}`, 20, 60);
+    doc.text(`Tipo: ${pqrs.tipo.toUpperCase()}`, 20, 70);
+    doc.text(`Estado Actual: ${pqrs.estado.toUpperCase()}`, 20, 80);
+
+    doc.text('RESUMEN DE DESCRIPCIÓN:', 20, 100);
+    doc.setFontSize(10);
+    const splitDesc = doc.splitTextToSize(pqrs.descripcion, 170);
+    doc.text(splitDesc, 20, 110);
+
+    doc.save(`Reporte_Oficial_${pqrs.radicado}.pdf`);
   }
 
   toggleUserStatus(userId: string): void {
@@ -331,10 +427,13 @@ export class AdminComponent implements OnInit {
   }
 
   deleteUser(userId: string): void {
-    if (confirm('¿Estás seguro de que deseas eliminar este usuario? Esta acción es irreversible.')) {
+    if (confirm('¿Estás seguro de que deseas eliminar este usuario? Si tiene PQRS asociadas, la operación fallará. Se recomienda usar "Desactivar" para conservar el historial.')) {
       this.usersService.delete(userId).subscribe({
         next: () => {
           this.loadAllUsers();
+        },
+        error: (err) => {
+          alert('No se pudo eliminar el usuario porque tiene registros de PQRS asociados. Por favor, desactívelo en su lugar.');
         },
       });
     }

@@ -11,6 +11,7 @@ import { User } from '../../users/entities/user.entity';
 import { PqrsType } from '../../common/enums/pqrs-type.enum';
 import { PqrsStatus } from '../../common/enums/pqrs-status.enum';
 import { PqrsPriority } from '../../common/enums/pqrs-priority.enum';
+import { PqrsArea } from '../../common/enums/pqrs-area.enum';
 import { PqrsAttachment } from './pqrs-attachment.entity';
 import { PqrsRespuesta } from './pqrs-respuesta.entity';
 import { PqrsHistorial } from './pqrs-historial.entity';
@@ -19,6 +20,9 @@ import { PqrsHistorial } from './pqrs-historial.entity';
 export class Pqrs {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  radicado: string;
 
   @Column({ type: 'varchar', length: 200 })
   titulo: string;
@@ -55,6 +59,20 @@ export class Pqrs {
 
   @Column({ type: 'timestamp', nullable: true, default: null })
   resolvedAt: Date | null;
+
+  @Column({
+    type: 'enum',
+    enum: PqrsArea,
+    nullable: true,
+    default: null,
+  })
+  area: PqrsArea | null;
+
+  @ManyToOne(() => User, { eager: false, nullable: true, onDelete: 'SET NULL' })
+  supervisorAsignado: User | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  supervisorAsignadoId: string | null;
 
   @ManyToOne(() => User, { eager: false })
   user: User;

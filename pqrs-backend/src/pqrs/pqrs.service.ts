@@ -6,7 +6,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThanOrEqual, Not } from 'typeorm';
+import { Repository, MoreThanOrEqual, Not, In } from 'typeorm';
 import { Pqrs } from './entities/pqrs.entity';
 import { PqrsAttachment } from './entities/pqrs-attachment.entity';
 import { PqrsRespuesta } from './entities/pqrs-respuesta.entity';
@@ -16,11 +16,13 @@ import { PqrsQueryDto } from './dto/pqrs-query.dto';
 import { CreateRespuestaDto } from './dto/create-respuesta.dto';
 import { UpdatePqrsStatusDto } from './dto/update-pqrs-status.dto';
 import { UpdatePriorityDto } from './dto/update-priority.dto';
+import { AssignPqrsDto } from './dto/assign-pqrs.dto';
 import { DashboardStatsDto } from './dto/dashboard-stats.dto';
 import { PqrsStatus } from '../common/enums/pqrs-status.enum';
 import { PqrsType } from '../common/enums/pqrs-type.enum';
 import { PqrsPriority } from '../common/enums/pqrs-priority.enum';
-import { calcularFechaLimite } from '../common/utils/sla.utils';
+import { PqrsArea } from '../common/enums/pqrs-area.enum';
+import { calcularFechaLimite, calcularFechaLimiteLegal } from '../common/utils/sla.utils';
 import { PqrsEventType } from '../common/enums/pqrs-event-type.enum';
 import { HistorialService } from './historial.service';
 import { EmailService } from '../notifications/email.service';
@@ -63,13 +65,21 @@ export class PqrsService {
     if (activasCount >= 10) {
       throw new BadRequestException(
         'Has alcanzado el límite de 10 PQRS activas. ' +
-          'Espera a que alguna sea resuelta o cerrada antes de crear una nueva.',
+        'Espera a que alguna sea resuelta o cerrada antes de crear una nueva.',
       );
     }
 
     const { titulo, descripcion, tipo, prioridad } = createDto;
 
+    // Generar número de radicado secuencial: RS-AÑO-CORRELATIVO
+    const currentYear = new Date().getFullYear();
+    const count = await this.pqrsRepository.count({
+      where: { createdAt: MoreThanOrEqual(new Date(`${currentYear}-01-01`)) }
+    });
+    const radicado = `RS${currentYear}-${(count + 1).toString().padStart(4, '0')}`;
+
     const pqrs = this.pqrsRepository.create({
+      radicado,
       titulo,
       descripcion,
       tipo,
@@ -129,11 +139,12 @@ export class PqrsService {
 
     if (actor.email) {
       this.emailService.sendPqrsCreada({
-        to:      actor.email,
-        nombre:  actor.nombre,
-        pqrsId:  savedPqrs.id,
-        titulo:  savedPqrs.titulo,
-        tipo:    savedPqrs.tipo,
+        to: actor.email,
+        nombre: actor.nombre,
+        pqrsId: savedPqrs.id,
+        titulo: savedPqrs.titulo,
+        tipo: savedPqrs.tipo,
+        radicado: savedPqrs.radicado,
       });
     }
 
@@ -145,30 +156,54 @@ export class PqrsService {
    * Los usuarios normales solo ven sus PQRS, los administradores ven todas o filtran por usuario.
    */
   async findAll(queryDto: PqrsQueryDto, userId: string, userRole: string) {
-    const {
-      tipo,
-      estado,
-      prioridad,
-      page = 1,
-      limit = 10,
-      search,
-      userId: filterUserId,
-      fechaDesde,
-      fechaHasta,
-      sortBy = 'createdAt',
-      sortOrder = 'DESC',
-    } = queryDto;
+    if (!userId || !userRole) {
+      throw new ForbiddenException('Credenciales de acceso incompletas para listar PQRS.');
+    }
 
-    const skip = (page - 1) * limit;
+    // 1. Extracción y Saneamiento de Parámetros
+    const tipo = queryDto.tipo;
+    const estado = queryDto.estado;
+    const prioridad = queryDto.prioridad;
+    const search = queryDto.search;
+    const radicado = queryDto.radicado;
+    const filterUserId = queryDto.userId;
+    const fechaDesde = queryDto.fechaDesde;
+    const fechaHasta = queryDto.fechaHasta;
+
+    // 2. CONVERSIÓN NUMÉRICA SEGURA (Evita Error 500 en PostgreSQL)
+    // Forzamos que page y limit sean números reales antes de skip/take
+    const numericPage = Math.max(Number(queryDto.page) || 1, 1);
+    // RNF-02.2: Límite máximo de 50 registros por página para proteger el rendimiento
+    const numericLimit = Math.min(Math.max(Number(queryDto.limit) || 10, 1), 50);
+    const skip = (numericPage - 1) * numericLimit;
+
+    // 3. VALIDACIÓN DE ORDENAMIENTO (Whitelist contra Inyección SQL)
+    const allowedSortFields = ['createdAt', 'titulo', 'radicado', 'tipo', 'estado', 'prioridad'];
+    const sortBy = queryDto.sortBy || 'createdAt';
+    const actualSortBy = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
+
+    const sortOrder = queryDto.sortOrder || 'DESC';
+    const actualSortOrder = sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
     const queryBuilder = this.pqrsRepository
       .createQueryBuilder('pqrs')
       .leftJoinAndSelect('pqrs.user', 'user')
+      .leftJoinAndSelect('pqrs.supervisorAsignado', 'supervisor')
       .leftJoinAndSelect('pqrs.attachments', 'attachments')
-      .leftJoinAndSelect('pqrs.respuestas', 'respuestas');
+      .leftJoinAndSelect('pqrs.respuestas', 'respuestas')
+      .addSelect(
+        `(CASE pqrs.prioridad
+          WHEN 'urgente' THEN 1
+          WHEN 'alta'    THEN 2
+          WHEN 'media'   THEN 3
+          WHEN 'baja'    THEN 4
+          ELSE 5
+        END)`,
+        'prioridad_orden',
+      );
 
     // Restricción por rol
-    if (userRole === UserRole.ADMIN) {
+    if (userRole === UserRole.ADMIN || userRole === UserRole.SUPERVISOR) {
       if (filterUserId) {
         queryBuilder.andWhere('pqrs.userId = :filterUserId', { filterUserId });
       }
@@ -178,6 +213,10 @@ export class PqrsService {
     }
 
     // Filtros por enums
+    if (radicado) {
+      queryBuilder.andWhere('pqrs.radicado = :radicado', { radicado });
+    }
+
     if (tipo) {
       queryBuilder.andWhere('pqrs.tipo = :tipo', { tipo });
     }
@@ -213,52 +252,62 @@ export class PqrsService {
       });
     }
 
-    // Ordenamiento: prioridad (urgente primero) y luego fecha de creación
+    // 4. ORDENAMIENTO ROBUSTO
+    // Usamos .orderBy para limpiar cualquier orden previo y establecer la prioridad como eje principal
     queryBuilder
-      .addOrderBy(
-        `CASE pqrs.prioridad
-          WHEN 'urgente' THEN 1
-          WHEN 'alta'    THEN 2
-          WHEN 'media'   THEN 3
-          WHEN 'baja'    THEN 4
-        END`,
-        'ASC',
-      )
-      .addOrderBy(`pqrs.${sortBy}`, sortOrder);
+      .orderBy('prioridad_orden', 'ASC')
+      // .addOrderBy para el criterio secundario (dinámico y seguro)
+      .addOrderBy(`pqrs.${actualSortBy}`, actualSortOrder as 'ASC' | 'DESC')
+      .skip(skip)
+      .take(numericLimit);
 
+    // 5. EJECUCIÓN Y RESPUESTA
     const [data, total] = await queryBuilder.getManyAndCount();
-    const totalPages = Math.ceil(total / limit);
+    const totalPages = Math.ceil(total / numericLimit);
 
-    // Mapear los datos para cumplir con la estructura ligera que incluye agregados de conteo y datos limpios del usuario
-    const paginatedData = data
-      .slice(skip, skip + limit)
-      .map((item) => {
-        return {
-          id: item.id,
-          titulo: item.titulo,
-          descripcion: item.descripcion,
-          tipo: item.tipo,
-          estado: item.estado,
-          prioridad: item.prioridad,
-          fechaLimite: calcularFechaLimite(item.createdAt, item.prioridad).toISOString(),
-          createdAt: item.createdAt,
-          updatedAt: item.updatedAt,
-          user: item.user ? { id: item.user.id, nombre: item.user.nombre } : null,
-          attachments: item.attachments || [],
-          _count: {
-            attachments: item.attachments ? item.attachments.length : 0,
-            respuestas: item.respuestas ? item.respuestas.length : 0,
-          },
-        };
-      });
+    const paginatedData = (data || []).map((item) => ({
+      id: item.id,
+      radicado: item.radicado || 'N/A',
+      titulo: item.titulo || 'Sin título',
+      tipo: item.tipo,
+      estado: item.estado,
+      prioridad: item.prioridad,
+      fechaLimite: this.getSafeSlaDate(item.createdAt, item.prioridad),
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      user: item.user?.id ? { id: item.user.id, nombre: item.user.nombre } : null,
+      attachments: Array.isArray(item.attachments)
+        ? item.attachments.filter(a => !!a).map(a => ({ ...a }))
+        : [],
+      _count: {
+        attachments: Array.isArray(item.attachments) ? item.attachments.filter(a => !!a).length : 0,
+        respuestas: Array.isArray(item.respuestas) ? item.respuestas.length : 0,
+      },
+    }));
 
     return {
       data: paginatedData,
       total,
-      page,
-      limit,
+      page: numericPage,
+      limit: numericLimit,
       totalPages,
     };
+  }
+
+  /**
+   * Calcula la fecha SLA de forma segura. 
+   * Prioriza los términos legales de la Ley 1755 de 2015.
+   */
+  private getSafeSlaDate(createdAt: Date, prioridad: PqrsPriority, tipo?: PqrsType): string | null {
+    if (!createdAt) return null;
+
+    // Si tenemos el tipo, usamos el cálculo legal (Ley 1755)
+    // Si no, caemos al cálculo por prioridad como respaldo
+    const date = tipo
+      ? calcularFechaLimiteLegal(createdAt, tipo)
+      : calcularFechaLimite(createdAt, prioridad);
+
+    return date ? date.toISOString() : null;
   }
 
   /**
@@ -271,6 +320,7 @@ export class PqrsService {
       relations: {
         attachments: true,
         user: true,
+        supervisorAsignado: true,
         respuestas: {
           autor: true,
         },
@@ -286,14 +336,16 @@ export class PqrsService {
       throw new NotFoundException(`La PQRS con ID ${id} no existe.`);
     }
 
-    // Validar propiedad: Solo el creador o un administrador pueden verla
-    if (pqrs.userId !== userId && userRole !== UserRole.ADMIN) {
+    // Validar permisos: el creador, supervisor asignado, o admin pueden verla
+    const esCreador = pqrs.userId === userId;
+    const esGestion = userRole === UserRole.ADMIN || userRole === UserRole.SUPERVISOR;
+
+    if (!esCreador && !esGestion) {
       throw new ForbiddenException('No tienes permisos para ver esta PQRS.');
     }
 
-    // Sanitizar datos del usuario propietario
-    const sanitizedUser = pqrs.user
-      ? { id: pqrs.user.id, nombre: pqrs.user.nombre }
+    const sanitizedSupervisor = pqrs.supervisorAsignado
+      ? { id: pqrs.supervisorAsignado.id, nombre: pqrs.supervisorAsignado.nombre, email: pqrs.supervisorAsignado.email }
       : null;
 
     // Sanitizar respuestas y la relación autor
@@ -311,20 +363,46 @@ export class PqrsService {
 
     return {
       id: pqrs.id,
+      radicado: pqrs.radicado,
       titulo: pqrs.titulo,
       descripcion: pqrs.descripcion,
       tipo: pqrs.tipo,
       estado: pqrs.estado,
       prioridad: pqrs.prioridad,
-      fechaLimite: calcularFechaLimite(pqrs.createdAt, pqrs.prioridad).toISOString(),
+      area: pqrs.area,
+      supervisorAsignado: sanitizedSupervisor,
+      fechaLimite: this.getSafeSlaDate(pqrs.createdAt, pqrs.prioridad, pqrs.tipo),
       createdAt: pqrs.createdAt,
       updatedAt: pqrs.updatedAt,
       resolvedAt: pqrs.resolvedAt,
       userId: pqrs.userId,
-      user: sanitizedUser,
+      user: pqrs.user ? { id: pqrs.user.id, nombre: pqrs.user.nombre } : null,
       attachments: pqrs.attachments || [],
       respuestas: sanitizedRespuestas,
     };
+  }
+
+  /**
+   * Consulta pública de estado por número de radicado.
+   * Devuelve información mínima no sensible.
+   */
+  async trackByRadicado(radicado: string) {
+    const pqrs = await this.pqrsRepository.findOne({
+      where: { radicado },
+      select: {
+        radicado: true,
+        tipo: true,
+        estado: true,
+        createdAt: true,
+        titulo: true,
+      },
+    });
+
+    if (!pqrs) {
+      throw new NotFoundException(`No se encontró ninguna solicitud con el radicado ${radicado}.`);
+    }
+
+    return pqrs;
   }
 
   /**
@@ -352,8 +430,8 @@ export class PqrsService {
     }
 
     // Validación de permisos por rol
-    const esAdmin = userRole === UserRole.ADMIN;
-    if (!esAdmin) {
+    const esGestion = userRole === UserRole.ADMIN || userRole === UserRole.SUPERVISOR;
+    if (!esGestion) {
       if (pqrs.userId !== userId) {
         throw new ForbiddenException('No tienes permisos para responder en esta PQRS.');
       }
@@ -366,7 +444,7 @@ export class PqrsService {
 
     // Transición automática T-AUTO-01: admin responde a PENDIENTE → EN_PROCESO
     let fueTransicionAutomatica = false;
-    if (esAdmin && pqrs.estado === PqrsStatus.PENDIENTE) {
+    if (esGestion && pqrs.estado === PqrsStatus.PENDIENTE) {
       if (isValidTransition(pqrs.estado, PqrsStatus.EN_PROCESO)) {
         pqrs.estado = PqrsStatus.EN_PROCESO;
         await this.pqrsRepository.save(pqrs);
@@ -376,7 +454,7 @@ export class PqrsService {
 
     const respuesta = this.respuestaRepository.create({
       contenido: createRespuestaDto.contenido,
-      esAdmin,
+      esAdmin: esGestion,
       pqrsId,
       autorId: userId,
     });
@@ -424,16 +502,17 @@ export class PqrsService {
     }
 
     // Notificar al ciudadano solo cuando el admin responde
-    if (esAdmin && pqrs.user?.email) {
+    if (esGestion && pqrs.user?.email) {
       this.emailService.sendNuevaRespuesta({
-        to:          pqrs.user.email,
-        nombre:      pqrs.user.nombre,
-        pqrsId:      pqrs.id,
-        titulo:      pqrs.titulo,
-        tipo:        pqrs.tipo,
-        respuesta:   fullRespuesta.contenido,
+        to: pqrs.user.email,
+        nombre: pqrs.user.nombre,
+        pqrsId: pqrs.id,
+        titulo: pqrs.titulo,
+        tipo: pqrs.tipo,
+        respuesta: fullRespuesta.contenido,
         autorNombre: actor.nombre,
-        esAdmin:     true,
+        esAdmin: true,
+        radicado: pqrs.radicado,
       });
     }
 
@@ -516,13 +595,14 @@ export class PqrsService {
     // Notificar al ciudadano sobre el cambio de estado
     if (pqrs.user?.email) {
       this.emailService.sendCambioEstado({
-        to:             pqrs.user.email,
-        nombre:         pqrs.user.nombre,
-        pqrsId:         id,
-        titulo:         pqrs.titulo,
-        tipo:           pqrs.tipo,
+        to: pqrs.user.email,
+        nombre: pqrs.user.nombre,
+        pqrsId: id,
+        titulo: pqrs.titulo,
+        tipo: pqrs.tipo,
         estadoAnterior: currentStatus,
-        estadoNuevo:    newStatus,
+        estadoNuevo: newStatus,
+        radicado: pqrs.radicado,
       });
     }
 
@@ -533,7 +613,7 @@ export class PqrsService {
       tipo: updated.tipo,
       estado: updated.estado,
       prioridad: updated.prioridad,
-      fechaLimite: calcularFechaLimite(updated.createdAt, updated.prioridad).toISOString(),
+      fechaLimite: this.getSafeSlaDate(updated.createdAt, updated.prioridad),
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
       resolvedAt: updated.resolvedAt,
@@ -552,13 +632,16 @@ export class PqrsService {
     adminRole: string,
     adminActor?: { id: string; nombre: string },
   ): Promise<any> {
-    if (adminRole !== UserRole.ADMIN) {
+    if (adminRole !== UserRole.ADMIN && adminRole !== UserRole.SUPERVISOR) {
       throw new ForbiddenException(
-        'Solo los administradores pueden cambiar la prioridad',
+        'Solo los administradores o supervisores pueden cambiar la prioridad',
       );
     }
 
-    const pqrs = await this.pqrsRepository.findOne({ where: { id } });
+    const pqrs = await this.pqrsRepository.findOne({
+      where: { id },
+      relations: { user: true }
+    });
     if (!pqrs) {
       throw new NotFoundException(`PQRS ${id} no encontrada`);
     }
@@ -585,6 +668,17 @@ export class PqrsService {
       descripcion: `Prioridad cambiada de '${prioridadAnterior}' a '${dto.prioridad}'`,
     });
 
+    // Notificación Activa: Informar al ciudadano del cambio de prioridad
+    if (pqrs.user?.email) {
+      this.emailService.sendPrioridadCambiada({
+        to: pqrs.user.email,
+        nombre: pqrs.user.nombre,
+        prioridadNueva: dto.prioridad,
+        radicado: pqrs.radicado,
+        pqrsId: id,
+      });
+    }
+
     return {
       id: updated.id,
       titulo: updated.titulo,
@@ -592,7 +686,7 @@ export class PqrsService {
       tipo: updated.tipo,
       estado: updated.estado,
       prioridad: updated.prioridad,
-      fechaLimite: calcularFechaLimite(updated.createdAt, updated.prioridad).toISOString(),
+      fechaLimite: this.getSafeSlaDate(updated.createdAt, updated.prioridad),
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
       resolvedAt: updated.resolvedAt,
@@ -657,8 +751,8 @@ export class PqrsService {
    * Obtiene estadísticas de PQRS para el panel de administración.
    */
   async getStats(userRole: string) {
-    if (userRole !== UserRole.ADMIN) {
-      throw new ForbiddenException('Solo los administradores pueden consultar estadísticas.');
+    if (userRole !== UserRole.ADMIN && userRole !== UserRole.SUPERVISOR) {
+      throw new ForbiddenException('No tienes permisos para consultar estadísticas.');
     }
 
     // Total de PQRS
@@ -680,6 +774,15 @@ export class PqrsService {
       [PqrsType.SUGERENCIA]: await this.pqrsRepository.countBy({ tipo: PqrsType.SUGERENCIA }),
     };
 
+    // PQRS por área (Métricas de gestión)
+    const porAreaRaw = await this.pqrsRepository
+      .createQueryBuilder('p')
+      .select('p.area', 'area')
+      .addSelect('COUNT(*)', 'cantidad')
+      .where('p.area IS NOT NULL')
+      .groupBy('p.area')
+      .getRawMany();
+
     // PQRS por prioridad
     const porPrioridad = {
       [PqrsPriority.BAJA]: await this.pqrsRepository.countBy({ prioridad: PqrsPriority.BAJA }),
@@ -687,6 +790,31 @@ export class PqrsService {
       [PqrsPriority.ALTA]: await this.pqrsRepository.countBy({ prioridad: PqrsPriority.ALTA }),
       [PqrsPriority.URGENTE]: await this.pqrsRepository.countBy({ prioridad: PqrsPriority.URGENTE }),
     };
+
+    // --- CÁLCULO DE CUMPLIMIENTO LEGAL (Ley 1755) ---
+    const abiertas = await this.pqrsRepository.find({
+      where: { estado: Not(In([PqrsStatus.RESUELTO, PqrsStatus.CERRADO])) },
+      select: {
+        id: true,
+        createdAt: true,
+        prioridad: true,
+        tipo: true
+      }
+    });
+
+    let vencidas = 0;
+    let proximaVencer = 0; // Menos de 48 horas
+    const ahora = new Date();
+
+    abiertas.forEach(p => {
+      const fechaLimite = calcularFechaLimiteLegal(p.createdAt, p.tipo);
+      if (fechaLimite < ahora) {
+        vencidas++;
+      } else {
+        const diffHoras = (fechaLimite.getTime() - ahora.getTime()) / (1000 * 60 * 60);
+        if (diffHoras <= 48) proximaVencer++;
+      }
+    });
 
     const urgentesAbiertas = await this.pqrsRepository.countBy({
       prioridad: PqrsPriority.URGENTE,
@@ -712,6 +840,10 @@ export class PqrsService {
     let tiempoPromedioResolucion = 0;
     if (resueltas.length > 0) {
       const totalDiffMs = resueltas.reduce((sum, item) => {
+        // Validación defensiva: Si faltan fechas, no intentamos calcular el tiempo
+        if (!(item.updatedAt instanceof Date) || !(item.createdAt instanceof Date)) {
+          return sum;
+        }
         const diff = item.updatedAt.getTime() - item.createdAt.getTime();
         return sum + diff;
       }, 0);
@@ -723,10 +855,17 @@ export class PqrsService {
       total,
       porEstado,
       porTipo,
+      porArea: porAreaRaw.map(r => ({ area: r.area, cantidad: Number(r.cantidad) })),
       porPrioridad,
       urgentesAbiertas,
       ultimosSieteDias,
       tiempoPromedioResolucion,
+      cumplimiento: {
+        vencidas,
+        proximaVencer,
+        abiertas: abiertas.length,
+        eficiencia: abiertas.length > 0 ? Math.round(((abiertas.length - vencidas) / abiertas.length) * 100) : 100
+      }
     };
   }
 
@@ -900,6 +1039,101 @@ export class PqrsService {
       absolutePath,
       filename: attachment.filename,
       mimetype: attachment.mimetype,
+    };
+  }
+
+  /**
+   * Asigna una PQRS a un supervisor o área responsable.
+   * Exclusivo para administradores.
+   */
+  async assignPqrs(
+    id: string,
+    assignDto: AssignPqrsDto,
+    adminRole: string,
+    adminActor?: { id: string; nombre: string },
+  ): Promise<any> {
+    if (adminRole !== UserRole.ADMIN && adminRole !== UserRole.SUPERVISOR) {
+      throw new ForbiddenException('Solo los administradores o supervisores pueden asignar PQRS');
+    }
+
+    const pqrs = await this.pqrsRepository.findOne({
+      where: { id },
+      relations: { user: true, supervisorAsignado: true },
+    });
+
+    if (!pqrs) {
+      throw new NotFoundException(`La PQRS con ID ${id} no existe.`);
+    }
+
+    if (pqrs.estado === PqrsStatus.CERRADO) {
+      throw new BadRequestException('No se puede asignar una PQRS cerrada');
+    }
+
+    const supervisorAnterior = pqrs.supervisorAsignadoId;
+    const areaAnterior = pqrs.area;
+
+    // Actualizar asignaciones
+    if (assignDto.supervisorAsignadoId) {
+      pqrs.supervisorAsignadoId = assignDto.supervisorAsignadoId;
+    }
+
+    if (assignDto.area) {
+      pqrs.area = assignDto.area;
+    }
+
+    const updated = await this.pqrsRepository.save(pqrs);
+
+    const actor = adminActor ?? { id: 'system', nombre: 'Administrador' };
+    await this.historialService.registrar({
+      pqrsId: id,
+      tipoEvento: PqrsEventType.ASIGNACION_CAMBIADA,
+      actor,
+      detalle: {
+        supervisorAnterior,
+        supervisorNuevo: assignDto.supervisorAsignadoId,
+        areaAnterior,
+        areaNueva: assignDto.area,
+      },
+      descripcion: `Asignación cambió: ${assignDto.supervisorAsignadoId ? `asignada a supervisor ${pqrs.supervisorAsignado?.nombre}` : 'sin asignar'} - Área: ${assignDto.area || 'sin especificar'}`,
+    });
+
+    // Notificar al supervisor asignado si es nuevo
+    if (assignDto.supervisorAsignadoId && assignDto.supervisorAsignadoId !== supervisorAnterior) {
+      if (updated.supervisorAsignado?.email) {
+        this.emailService.sendPqrsAsignada({
+          to: updated.supervisorAsignado.email,
+          nombre: updated.supervisorAsignado.nombre,
+          pqrsId: updated.id,
+          titulo: updated.titulo,
+          tipo: updated.tipo,
+          area: updated.area || undefined,
+          ciudadano: pqrs.user?.nombre,
+        });
+      }
+    }
+
+    // Notificación Activa: Informar al ciudadano que su PQRS ya tiene área/supervisor
+    if (pqrs.user?.email && (assignDto.area || assignDto.supervisorAsignadoId)) {
+      this.emailService.sendNotificacionAsignacionCiudadano({
+        to: pqrs.user.email,
+        nombre: pqrs.user.nombre,
+        area: assignDto.area || 'Área Técnica',
+        radicado: pqrs.radicado,
+        pqrsId: id,
+      });
+    }
+
+    return {
+      id: updated.id,
+      titulo: updated.titulo,
+      descripcion: updated.descripcion,
+      tipo: updated.tipo,
+      estado: updated.estado,
+      prioridad: updated.prioridad,
+      area: updated.area,
+      supervisorAsignado: updated.supervisorAsignado ? { id: updated.supervisorAsignado.id, nombre: updated.supervisorAsignado.nombre } : null,
+      createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
     };
   }
 }

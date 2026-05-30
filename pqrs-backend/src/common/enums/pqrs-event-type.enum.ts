@@ -6,4 +6,5 @@ export enum PqrsEventType {
   ARCHIVO_SUBIDO = 'archivo_subido',
   ARCHIVO_ELIMINADO = 'archivo_eliminado',
   PQRS_ELIMINADA = 'pqrs_eliminada',
+  ASIGNACION_CAMBIADA = 'asignacion_cambiada',
 }
