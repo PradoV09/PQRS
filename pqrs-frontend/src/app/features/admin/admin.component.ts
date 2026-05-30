@@ -208,12 +208,33 @@ export class AdminComponent implements OnInit {
   // Método para exportar a CSV (Cumple con requerimiento de Reportes)
   exportToCSV(): void {
     const data = this.allPqrs();
+
+    // 1. Datos principales
     const headers = 'Radicado,Titulo,Tipo,Estado,Prioridad,Creado\n';
     const rows = data.map(p =>
       `${p.radicado},"${p.titulo}",${p.tipo},${p.estado},${p.prioridad},${p.createdAt}`
     ).join('\n');
 
-    const blob = new Blob([headers + rows], { type: 'text/csv' });
+    // 2. Cálculo de estadísticas para el resumen (Datos para "gráficas")
+    const tiposCount: Record<string, number> = {};
+    const prioridadCount: Record<string, number> = {};
+
+    data.forEach(p => {
+      tiposCount[p.tipo] = (tiposCount[p.tipo] || 0) + 1;
+      prioridadCount[p.prioridad] = (prioridadCount[p.prioridad] || 0) + 1;
+    });
+
+    // 3. Formatear sección de resumen
+    let summary = '\n\n--- RESUMEN PARA GRÁFICAS ---\n';
+    summary += '\nDISTRIBUCIÓN POR TIPO DE SOLICITUD\nTipo,Cantidad\n';
+    Object.entries(tiposCount).forEach(([tipo, count]) => summary += `${tipo.toUpperCase()},${count}\n`);
+
+    summary += '\nDISTRIBUCIÓN POR PRIORIDAD\nPrioridad,Cantidad\n';
+    Object.entries(prioridadCount).forEach(([prio, count]) => summary += `${prio.toUpperCase()},${count}\n`);
+
+    // 4. Crear y descargar archivo
+    const fullContent = headers + rows + summary;
+    const blob = new Blob([fullContent], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

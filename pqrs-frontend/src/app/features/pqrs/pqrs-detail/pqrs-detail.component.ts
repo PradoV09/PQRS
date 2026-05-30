@@ -58,7 +58,7 @@ export class PqrsDetailComponent implements OnInit {
   selectedNewStatus = signal<PqrsStatus | ''>('');
   nuevaPrioridad = signal<PqrsPriority>(PqrsPriority.MEDIA);
   showStatusModal = signal(false);
-  pendingStatus   = signal<PqrsStatus | ''>('');
+  pendingStatus = signal<PqrsStatus | ''>('');
   showDeleteModal = signal(false);
 
   priorityOptions = PRIORITY_OPTIONS;
@@ -285,11 +285,12 @@ export class PqrsDetailComponent implements OnInit {
 
   onAttachmentDeleted(attachmentId: string): void {
     const currentPqrs = this.pqrs();
-    if (!currentPqrs) return;
+    const attachments = currentPqrs?.attachments;
+    if (!currentPqrs || !attachments) return;
 
     this.pqrs.set({
       ...currentPqrs,
-      attachments: currentPqrs.attachments.filter(att => att.id !== attachmentId),
+      attachments: attachments.filter(att => att.id !== attachmentId),
     });
     this.loadHistorial(currentPqrs.id);
   }

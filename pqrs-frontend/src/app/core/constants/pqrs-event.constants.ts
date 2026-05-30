@@ -50,4 +50,10 @@ export const EVENT_CONFIG: Record<PqrsEventType, EventConfig> = {
     bgColor: '#FCEBEB',
     iconColor: '#501313',
   },
+  [PqrsEventType.ASIGNACION_CAMBIADA]: {
+    label: 'Asignación cambiada',
+    icon: 'user-check',
+    bgColor: '#E8F4FD',
+    iconColor: '#1565C0',
+  },
 };
