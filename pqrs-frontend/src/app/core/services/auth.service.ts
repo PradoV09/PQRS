@@ -1,13 +1,13 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap } from 'rxjs';
+import { Observable, map, tap, firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 export interface User {
   id: string;
   nombre: string;
   email: string;
-  rol: 'admin' | 'usuario';
+  rol: 'admin' | 'supervisor' | 'usuario';
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -16,7 +16,6 @@ export interface User {
 export interface AuthResponse {
   user: User;
   accessToken: string;
-  refreshToken: string;
 }
 
 @Injectable({
@@ -24,90 +23,88 @@ export interface AuthResponse {
 })
 export class AuthService {
   private readonly http = inject(HttpClient);
-  private readonly tokenKey = 'pqrs_token';
   private readonly apiUrl = environment.apiUrl;
 
-  /**
-   * Registra un nuevo usuario en la plataforma.
-   */
+  // Access token almacenado SOLO en memoria — nunca en localStorage
+  private accessToken: string | null = null;
+
+  // Estado reactivo del usuario actual
+  readonly currentUser = signal<User | null>(null);
+
+  setAccessToken(token: string): void { this.accessToken = token; }
+  getAccessToken(): string | null     { return this.accessToken; }
+  clearAccessToken(): void            { this.accessToken = null; }
+
+  isAuthenticated(): boolean {
+    return !!this.accessToken && !!this.currentUser();
+  }
+
+  getCurrentUserRole(): 'admin' | 'supervisor' | 'usuario' | null {
+    return this.currentUser()?.rol ?? null;
+  }
+
+  getCurrentUserId(): string | null {
+    return this.currentUser()?.id ?? null;
+  }
+
+  checkEmailAvailable(email: string): Observable<boolean> {
+    return this.http
+      .get<{ disponible: boolean }>(`${this.apiUrl}/auth/check-email?email=${encodeURIComponent(email)}`)
+      .pipe(map(r => r.disponible));
+  }
+
   register(payload: any): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.apiUrl}/auth/register`, payload).pipe(
-      tap((response) => this.saveToken(response.accessToken))
+      tap(response => {
+        this.setAccessToken(response.accessToken);
+        this.currentUser.set(response.user);
+      }),
     );
   }
 
-  /**
-   * Inicia sesión del usuario.
-   */
   login(payload: any): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.apiUrl}/auth/login`, payload).pipe(
-      tap((response) => this.saveToken(response.accessToken))
+    return this.http
+      .post<AuthResponse>(`${this.apiUrl}/auth/login`, payload, { withCredentials: true })
+      .pipe(
+        tap(response => {
+          this.setAccessToken(response.accessToken);
+          this.currentUser.set(response.user);
+        }),
+      );
+  }
+
+  refreshTokens(): Observable<{ accessToken: string }> {
+    return this.http.post<{ accessToken: string }>(
+      `${this.apiUrl}/auth/refresh`,
+      {},
+      { withCredentials: true },
     );
   }
 
-  /**
-   * Cierra la sesión activa limpiando el token guardado.
-   */
-  logout(): void {
-    localStorage.removeItem(this.tokenKey);
-    sessionStorage.clear(); // Limpieza extra por seguridad
+  loadCurrentUser(): Observable<User> {
+    return this.http
+      .get<User>(`${this.apiUrl}/auth/me`)
+      .pipe(tap(user => this.currentUser.set(user)));
   }
 
-  /**
-   * Comprueba si el usuario está autenticado verificando la presencia del token.
-   */
-  isAuthenticated(): boolean {
-    return !!this.getToken();
-  }
-
-  /**
-   * Obtiene el token de acceso guardado en localStorage.
-   */
-  getToken(): string | null {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(this.tokenKey);
-    }
-    return null;
-  }
-
-  /**
-   * Guarda el token en localStorage de forma segura.
-   */
-  private saveToken(token: string): void {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(this.tokenKey, token);
-    }
-  }
-
-  /**
-   * Decodifica el payload del token JWT de acceso.
-   */
-  getDecodedToken(): any {
-    const token = this.getToken();
-    if (!token) return null;
+  async tryRestoreSession(): Promise<void> {
     try {
-      const payloadBase64 = token.split('.')[1];
-      // Decodificación base64 segura que soporta caracteres especiales
-      const decodedJson = atob(payloadBase64);
-      return JSON.parse(decodedJson);
-    } catch (e) {
-      return null;
+      const { accessToken } = await firstValueFrom(this.refreshTokens());
+      this.setAccessToken(accessToken);
+      await firstValueFrom(this.loadCurrentUser());
+    } catch {
+      this.clearSession();
     }
   }
 
-  /**
-   * Obtiene el ID del usuario actual desde el JWT.
-   */
-  getCurrentUserId(): string | null {
-    const decoded = this.getDecodedToken();
-    return decoded ? decoded.sub : null;
+  logout(): Observable<{ message: string }> {
+    return this.http
+      .post<{ message: string }>(`${this.apiUrl}/auth/logout`, {}, { withCredentials: true })
+      .pipe(tap(() => this.clearSession()));
   }
 
-  /**
-   * Obtiene el rol del usuario actual desde el JWT.
-   */
-  getCurrentUserRole(): 'admin' | 'usuario' | null {
-    const decoded = this.getDecodedToken();
-    return decoded ? decoded.rol : null;
+  clearSession(): void {
+    this.clearAccessToken();
+    this.currentUser.set(null);
   }
 }

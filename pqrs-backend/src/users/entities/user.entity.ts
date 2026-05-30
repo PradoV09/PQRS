@@ -24,9 +24,19 @@ export class User {
   @Column({ type: 'varchar', length: 255, unique: true })
   email: string;
 
-  @Column({ type: 'varchar' })
+  @Column({ type: 'varchar', select: false })
   @Exclude()
   passwordHash: string;
+
+  @Column({ type: 'varchar', nullable: true, select: false })
+  @Exclude()
+  refreshTokenHash: string | null;
+
+  @Column({ type: 'int', default: 0 })
+  failedLoginAttempts: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lockedUntil: Date | null;
 
   @Column({
     type: 'enum',
@@ -45,7 +55,7 @@ export class User {
   updatedAt: Date;
 
   toJSON() {
-    const { passwordHash, ...result } = this;
+    const { passwordHash, refreshTokenHash, ...result } = this;
     return result;
   }
 }

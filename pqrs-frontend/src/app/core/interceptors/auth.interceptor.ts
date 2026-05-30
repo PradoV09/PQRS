@@ -1,7 +1,7 @@
-import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
+import { HttpInterceptorFn, HttpErrorResponse, HttpRequest, HttpHandlerFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { catchError, throwError } from 'rxjs';
+import { catchError, switchMap, throwError } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { ToastService } from '../services/toast.service';
 import { environment } from '../../../environments/environment';
@@ -10,45 +10,62 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
   const router = inject(Router);
   const toastService = inject(ToastService);
-  const token = authService.getToken();
+
   const isApiUrl = req.url.startsWith(environment.apiUrl);
+  const token = authService.getAccessToken();
 
-  let clone = req;
+  const authReq = (token && isApiUrl)
+    ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } })
+    : req;
 
-  // Inyectar token solo en peticiones dirigidas al API propio si existe
-  if (token && isApiUrl) {
-    clone = req.clone({
-      setHeaders: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-  }
-
-  return next(clone).pipe(
+  return next(authReq).pipe(
     catchError((error: unknown) => {
-      if (error instanceof HttpErrorResponse) {
-        // Handle 401 Unauthorized
-        if (error.status === 401) {
-          authService.logout();
-          router.navigate(['/login']);
-        }
-
-        // Handle upload errors (400 Bad Request with specific messages)
-        if (error.status === 400 && req.url.includes('/files')) {
-          const errorMessage = error.error?.message || 'Error al subir el archivo';
-          if (Array.isArray(errorMessage)) {
-            toastService.error(errorMessage[0]);
-          } else {
-            toastService.error(errorMessage);
-          }
-        }
-
-        // Handle file size limit errors
-        if (error.status === 413) {
-          toastService.error('El archivo supera el límite de tamaño permitido (10 MB)');
-        }
+      if (!(error instanceof HttpErrorResponse)) {
+        return throwError(() => error);
       }
+
+      // 401 en cualquier endpoint que no sea /auth/refresh → intentar renovar token
+      if (error.status === 401 && !req.url.includes('/auth/refresh')) {
+        return authService.refreshTokens().pipe(
+          switchMap(({ accessToken }) => {
+            authService.setAccessToken(accessToken);
+            const retryReq = req.clone({
+              setHeaders: { Authorization: `Bearer ${accessToken}` },
+            });
+            return next(retryReq);
+          }),
+          catchError((refreshError) => {
+            authService.clearSession();
+            router.navigate(['/login'], { queryParams: { expired: true } });
+            return throwError(() => refreshError);
+          }),
+        );
+      }
+
+      // 403 — sin permisos
+      if (error.status === 403) {
+        toastService.warning('Acceso denegado', 'No tienes permisos para realizar esta acción.');
+      }
+
+      // Error en subida de archivos
+      if (error.status === 400 && req.url.includes('/files')) {
+        const msg = error.error?.message;
+        toastService.error(Array.isArray(msg) ? msg[0] : (msg || 'Error al subir el archivo'));
+      }
+
+      if (error.status === 413) {
+        toastService.error('El archivo supera el límite de tamaño permitido (10 MB)');
+      }
+
+      // 500+ — error de servidor
+      if (error.status >= 500) {
+        toastService.error(
+          'Error en el servidor',
+          'Ocurrió un problema inesperado. Nuestro equipo fue notificado. Intenta de nuevo en unos minutos.'
+        );
+      }
+
       return throwError(() => error);
-    })
+    }),
   );
 };

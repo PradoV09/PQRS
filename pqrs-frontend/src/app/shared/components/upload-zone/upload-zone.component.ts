@@ -1,11 +1,18 @@
 import { Component, Input, Output, EventEmitter, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import {
+  ALLOWED_EXTENSIONS_ACCEPT,
+  ALLOWED_MIMETYPES_FE,
+  MAX_FILE_SIZE_BYTES,
+  MAX_FILES_PER_PQRS,
+} from '../../../core/constants/file-upload.constants';
+import { validarArchivos } from '../../../core/utils/file-validator.util';
 
 interface FilePreview {
   file: File;
   name: string;
   sizeFormatted: string;
-  type: 'image' | 'video' | 'doc' | 'other';
+  type: 'image' | 'doc' | 'other';
   previewUrl?: string;
   error?: string;
 }
@@ -18,9 +25,10 @@ interface FilePreview {
   styleUrl: './upload-zone.component.css',
 })
 export class UploadZoneComponent implements OnDestroy {
-  @Input() maxFiles = 5;
-  @Input() maxSizeMB = 10;
-  @Input() accept = 'image/*,video/mp4,video/quicktime,.pdf,.doc,.docx';
+  @Input() maxFiles = MAX_FILES_PER_PQRS;
+  @Input() maxSizeMB = MAX_FILE_SIZE_BYTES / (1024 * 1024);
+  @Input() accept = ALLOWED_EXTENSIONS_ACCEPT;
+  @Input() existingCount = 0;
   @Output() filesSelected = new EventEmitter<File[]>();
 
   @ViewChild('fileInput') fileInput!: ElementRef<HTMLInputElement>;
@@ -29,21 +37,7 @@ export class UploadZoneComponent implements OnDestroy {
   dragOver = false;
   errors: string[] = [];
 
-  private readonly ALLOWED_MIME_TYPES: Record<string, string[]> = {
-    'image/jpeg': ['.jpg', '.jpeg'],
-    'image/png': ['.png'],
-    'image/gif': ['.gif'],
-    'image/webp': ['.webp'],
-    'application/pdf': ['.pdf'],
-    'application/msword': ['.doc'],
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-    'video/mp4': ['.mp4'],
-    'video/quicktime': ['.mov'],
-    'video/x-msvideo': ['.avi'],
-  };
-
-  private readonly IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-  private readonly VIDEO_MIME_TYPES = ['video/mp4', 'video/quicktime', 'video/x-msvideo'];
+  private readonly IMAGE_MIME_TYPES = ['image/jpeg', 'image/png'];
 
   onDragOver(event: DragEvent): void {
     event.preventDefault();
@@ -65,11 +59,17 @@ export class UploadZoneComponent implements OnDestroy {
   onFileInputChange(event: Event): void {
     const input = event.target as HTMLInputElement;
     this.processFiles(Array.from(input.files ?? []));
+    input.value = ''; // reset so same file can be re-selected after removal
   }
 
   processFiles(incoming: File[]): void {
     this.errors = [];
-    const maxSizeBytes = this.maxSizeMB * 1024 * 1024;
+
+    const resultado = validarArchivos(incoming, this.existingCount + this.selectedFiles.filter(f => !f.error).length);
+    if (!resultado.valido) {
+      this.errors = resultado.errores;
+      return;
+    }
 
     for (const file of incoming) {
       const preview: FilePreview = {
@@ -79,37 +79,14 @@ export class UploadZoneComponent implements OnDestroy {
         type: this.getFileType(file),
       };
 
-      // Validate size
-      if (file.size > maxSizeBytes) {
-        preview.error = `El archivo supera el límite de ${this.maxSizeMB} MB`;
-        this.errors.push(`"${file.name}" supera el límite de ${this.maxSizeMB} MB`);
-      }
-
-      // Validate type
-      const allowedExtensions = this.ALLOWED_MIME_TYPES[file.type];
-      if (!allowedExtensions) {
-        preview.error = 'Tipo de archivo no permitido';
-        this.errors.push(`"${file.name}" tiene un tipo no permitido`);
-      }
-
-      // Generate preview for images
-      if (this.IMAGE_MIME_TYPES.includes(file.type) && !preview.error) {
+      if (this.IMAGE_MIME_TYPES.includes(file.type)) {
         preview.previewUrl = URL.createObjectURL(file);
       }
 
       this.selectedFiles.push(preview);
     }
 
-    // Check total count
-    if (this.selectedFiles.length > this.maxFiles) {
-      this.errors.push(`Máximo ${this.maxFiles} archivos permitidos`);
-      this.selectedFiles = this.selectedFiles.slice(0, this.maxFiles);
-    }
-
-    // Emit valid files
-    this.filesSelected.emit(
-      this.selectedFiles.filter((f) => !f.error).map((f) => f.file),
-    );
+    this.emitValidFiles();
   }
 
   removeFile(index: number): void {
@@ -118,17 +95,18 @@ export class UploadZoneComponent implements OnDestroy {
       URL.revokeObjectURL(file.previewUrl);
     }
     this.selectedFiles.splice(index, 1);
-    this.filesSelected.emit(
-      this.selectedFiles.filter((f) => !f.error).map((f) => f.file),
-    );
+    this.errors = [];
+    this.emitValidFiles();
   }
 
   ngOnDestroy(): void {
-    this.selectedFiles.forEach((file) => {
-      if (file.previewUrl) {
-        URL.revokeObjectURL(file.previewUrl);
-      }
+    this.selectedFiles.forEach((f) => {
+      if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
     });
+  }
+
+  private emitValidFiles(): void {
+    this.filesSelected.emit(this.selectedFiles.filter((f) => !f.error).map((f) => f.file));
   }
 
   private formatFileSize(bytes: number): string {
@@ -139,10 +117,15 @@ export class UploadZoneComponent implements OnDestroy {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   }
 
-  private getFileType(file: File): 'image' | 'video' | 'doc' | 'other' {
+  private getFileType(file: File): 'image' | 'doc' | 'other' {
     if (this.IMAGE_MIME_TYPES.includes(file.type)) return 'image';
-    if (this.VIDEO_MIME_TYPES.includes(file.type)) return 'video';
-    if (file.type.includes('pdf') || file.type.includes('word') || file.type.includes('document')) return 'doc';
+    if (
+      file.type === 'application/pdf' ||
+      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    )
+      return 'doc';
     return 'other';
   }
+
+  protected readonly MAX_FILES_PER_PQRS = MAX_FILES_PER_PQRS;
 }

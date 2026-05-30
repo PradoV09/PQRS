@@ -1,16 +1,24 @@
 import { inject } from '@angular/core';
-import { CanActivateFn, Router } from '@angular/router';
+import { CanActivateFn, Router, ActivatedRouteSnapshot } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 
-export const authGuard: CanActivateFn = (route, state) => {
+export const authGuard: CanActivateFn = (route: ActivatedRouteSnapshot, state) => {
   const authService = inject(AuthService);
   const router = inject(Router);
 
-  if (authService.isAuthenticated()) {
-    return true;
+  const user = authService.currentUser();
+
+  if (!user) {
+    return router.createUrlTree(['/login'], {
+      queryParams: { returnUrl: state.url },
+    });
   }
 
-  // Redirigir al login si no está autenticado
-  router.navigate(['/login']);
-  return false;
+  // Verificar rol si la ruta lo especifica en data.roles
+  const rolesRequeridos = route.data?.['roles'] as string[] | undefined;
+  if (rolesRequeridos && !rolesRequeridos.includes(user.rol)) {
+    return router.createUrlTree(['/forbidden']);
+  }
+
+  return true;
 };

@@ -1,0 +1,33 @@
+<header class="topbar" role="banner">
+  <button
+    class="topbar-menu-btn"
+    (click)="openMenu()"
+    aria-label="Abrir menú"
+    aria-expanded="false"
+  >
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </button>
+
+  <div class="topbar-brand">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+      <polyline points="14 2 14 8 20 8"></polyline>
+      <line x1="16" y1="13" x2="8" y2="13"></line>
+      <line x1="16" y1="17" x2="8" y2="17"></line>
+    </svg>
+    <span class="topbar-brand-name">Portal PQRS</span>
+  </div>
+
+  <div class="topbar-spacer"></div>
+
+  <div class="topbar-user" aria-label="Usuario actual">
+    <div class="topbar-user-avatar" aria-hidden="true">
+      {{ (userNombre()?.nombre || userNombre()?.email || 'U').charAt(0).toUpperCase() }}
+    </div>
+    <span class="topbar-user-name">{{ userNombre()?.nombre || userNombre()?.email }}</span>
+  </div>
+</header>

@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { PqrsService } from '../../core/services/pqrs.service';
@@ -25,6 +25,9 @@ export class AdminComponent implements OnInit {
   private readonly usersService = inject(UsersService);
   private readonly authService = inject(AuthService);
   private readonly filesService = inject(FilesService);
+
+  // Role helpers
+  readonly isAdmin = computed(() => this.authService.currentUser()?.rol === 'admin');
 
   // Navigation state
   currentPage = signal<'dashboard' | 'pqrs' | 'usuarios' | 'detalle'>('dashboard');
@@ -64,7 +67,9 @@ export class AdminComponent implements OnInit {
   ngOnInit(): void {
     this.loadDashboard();
     this.loadAllPqrs();
-    this.loadAllUsers();
+    if (this.isAdmin()) {
+      this.loadAllUsers();
+    }
 
     // Handle query parameter for tab navigation
     this.route.queryParams.subscribe(params => {

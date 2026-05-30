@@ -8,12 +8,12 @@ export const adminGuard: CanActivateFn = (route, state) => {
   const toastService = inject(ToastService);
   const router = inject(Router);
 
-  if (authService.isAuthenticated() && authService.getCurrentUserRole() === 'admin') {
+  const user = authService.currentUser();
+
+  if (user?.rol === 'admin' || user?.rol === 'supervisor') {
     return true;
   }
 
-  // Redirigir y notificar
-  toastService.error('Acceso denegado. Se requiere rol de administrador.');
-  router.navigate(['/pqrs']);
-  return false;
+  toastService.error('Acceso denegado. Se requiere rol de administrador o supervisor.');
+  return router.createUrlTree(['/forbidden']);
 };

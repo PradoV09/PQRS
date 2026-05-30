@@ -1,57 +1,44 @@
 import { Injectable, signal } from '@angular/core';
 
 export interface ToastMessage {
-  id: string;
-  type: 'success' | 'error' | 'info';
-  message: string;
+  id:       string;
+  type:     'success' | 'error' | 'warning' | 'info';
+  title:    string;
+  message?: string;
+  duration: number;
 }
 
 @Injectable({
   providedIn: 'root',
 })
 export class ToastService {
-  toasts = signal<ToastMessage[]>([]);
+  readonly toasts = signal<ToastMessage[]>([]);
 
-  /**
-   * Muestra una notificación de éxito.
-   */
-  success(message: string): void {
-    this.show('success', message);
-  }
-
-  /**
-   * Muestra una notificación de error.
-   */
-  error(message: string): void {
-    this.show('error', message);
-  }
-
-  /**
-   * Muestra una notificación de información.
-   */
-  info(message: string): void {
-    this.show('info', message);
-  }
-
-  /**
-   * Registra y encola una notificación, programando su eliminación tras 4 segundos.
-   */
-  private show(type: 'success' | 'error' | 'info', message: string): void {
+  show(toast: Omit<ToastMessage, 'id'>): void {
     const id = Math.random().toString(36).substring(2, 9);
-    const newToast: ToastMessage = { id, type, message };
-
-    this.toasts.update((current) => [...current, newToast]);
-
-    // Eliminar automáticamente a los 4 segundos
-    setTimeout(() => {
-      this.remove(id);
-    }, 4000);
+    this.toasts.update(current => [...current, { ...toast, id }]);
+    if (toast.duration > 0) {
+      setTimeout(() => this.remove(id), toast.duration);
+    }
   }
 
-  /**
-   * Elimina una notificación de la lista.
-   */
+  success(title: string, message?: string): void {
+    this.show({ type: 'success', title, message, duration: 4000 });
+  }
+
+  error(title: string, message?: string): void {
+    this.show({ type: 'error', title, message, duration: 6000 });
+  }
+
+  warning(title: string, message?: string): void {
+    this.show({ type: 'warning', title, message, duration: 5000 });
+  }
+
+  info(title: string, message?: string): void {
+    this.show({ type: 'info', title, message, duration: 4000 });
+  }
+
   remove(id: string): void {
-    this.toasts.update((current) => current.filter((t) => t.id !== id));
+    this.toasts.update(current => current.filter(t => t.id !== id));
   }
 }

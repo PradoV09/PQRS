@@ -1,6 +1,30 @@
 <div class="portal-layout">
-  <!-- Barra lateral de navegación -->
   <app-sidebar></app-sidebar>
+
+  <!-- Confirm: cambio de estado -->
+  <app-confirm-modal
+    *ngIf="showStatusModal()"
+    title="Cambiar estado de la PQRS"
+    [message]="'¿Confirmas cambiar el estado? Esta acción quedará registrada en el historial.'"
+    confirmLabel="Sí, cambiar estado"
+    cancelLabel="Cancelar"
+    variant="primary"
+    [loading]="updatingStatus()"
+    (confirmed)="onUpdateStatus()"
+    (cancelled)="showStatusModal.set(false)"
+  ></app-confirm-modal>
+
+  <!-- Confirm: eliminar -->
+  <app-confirm-modal
+    *ngIf="showDeleteModal()"
+    title="Eliminar PQRS"
+    message="Esta acción es irreversible. Se borrarán permanentemente la solicitud y todos sus archivos adjuntos."
+    confirmLabel="Sí, eliminar"
+    cancelLabel="Cancelar"
+    variant="danger"
+    (confirmed)="onDeletePqrs()"
+    (cancelled)="showDeleteModal.set(false)"
+  ></app-confirm-modal>
 
   <!-- Contenido principal -->
   <div class="portal-content">
@@ -150,7 +174,7 @@
                     <button
                       class="btn-update-status"
                       [disabled]="!selectedNewStatus() || updatingStatus()"
-                      (click)="onUpdateStatus()"
+                      (click)="requestStatusChange()"
                     >
                       <span class="spinner-small" *ngIf="updatingStatus()"></span>
                       <span *ngIf="!updatingStatus()">Actualizar Estado</span>
@@ -256,7 +280,7 @@
               <button
                 class="btn-delete-pqrs"
                 [disabled]="updatingStatus() || sendingRespuesta()"
-                (click)="onDeletePqrs()"
+                (click)="requestDelete()"
               >
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"></polyline>

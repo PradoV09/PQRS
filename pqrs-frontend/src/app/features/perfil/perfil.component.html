@@ -1,0 +1,171 @@
+<div class="portal-layout">
+  <app-sidebar></app-sidebar>
+
+  <div class="portal-content" id="main-content">
+    <app-topbar (menuOpen)="openMobileSidebar()"></app-topbar>
+
+    <main class="perfil-main">
+
+      <!-- Avatar + info -->
+      <section class="perfil-card" aria-label="Información de cuenta">
+        <div class="perfil-avatar-wrap">
+          <div class="perfil-avatar" aria-hidden="true">
+            {{ (user()?.nombre || user()?.email || 'U').charAt(0).toUpperCase() }}
+          </div>
+          <div>
+            <h1 class="perfil-name">{{ user()?.nombre }}</h1>
+            <p class="perfil-email">{{ user()?.email }}</p>
+            <span class="perfil-role-badge" [class.admin]="user()?.rol === 'admin'">
+              {{ user()?.rol === 'admin' ? 'Administrador' : 'Ciudadano' }}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <div class="perfil-cols">
+
+        <!-- Información personal -->
+        <section class="perfil-section" aria-labelledby="info-title">
+          <h2 class="section-title" id="info-title">Información personal</h2>
+          <form [formGroup]="profileForm" (ngSubmit)="saveProfile()" novalidate>
+
+            <div class="form-group">
+              <label for="perfil-nombre" class="form-label">Nombre completo</label>
+              <input
+                id="perfil-nombre"
+                type="text"
+                formControlName="nombre"
+                class="form-input"
+                [class.form-input--error]="isInvalid('profile', 'nombre')"
+                placeholder="Tu nombre completo"
+                autocomplete="name"
+              />
+              <p *ngIf="isInvalid('profile', 'nombre')" class="field-error" role="alert">
+                {{ fieldError('profile', 'nombre') }}
+              </p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Correo electrónico</label>
+              <input type="email" class="form-input form-input--readonly" [value]="user()?.email" readonly aria-readonly="true" />
+              <p class="field-hint">El correo no puede ser modificado.</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Rol</label>
+              <input type="text" class="form-input form-input--readonly"
+                [value]="user()?.rol === 'admin' ? 'Administrador' : 'Ciudadano'"
+                readonly aria-readonly="true" />
+            </div>
+
+            <div class="form-actions">
+              <button type="button" class="btn-discard" (click)="discardProfileChanges()" [disabled]="!profileDirty() || savingProfile()">
+                Descartar cambios
+              </button>
+              <app-button
+                type="submit"
+                variant="primary"
+                [loading]="savingProfile()"
+                [disabled]="!profileDirty() || profileForm.invalid"
+              >
+                {{ savingProfile() ? 'Guardando…' : (profileDirty() ? 'Guardar cambios' : 'Sin cambios') }}
+              </app-button>
+            </div>
+
+          </form>
+        </section>
+
+        <!-- Cambio de contraseña -->
+        <section class="perfil-section" aria-labelledby="security-title">
+          <h2 class="section-title" id="security-title">Seguridad</h2>
+          <form [formGroup]="passwordForm" (ngSubmit)="savePassword()" novalidate>
+
+            <!-- Contraseña actual -->
+            <div class="form-group">
+              <label for="pwd-actual" class="form-label">Contraseña actual</label>
+              <div class="input-pwd-wrap">
+                <input
+                  id="pwd-actual"
+                  [type]="showCurrentPwd() ? 'text' : 'password'"
+                  formControlName="actual"
+                  class="form-input"
+                  [class.form-input--error]="isInvalid('password', 'actual')"
+                  placeholder="Tu contraseña actual"
+                  autocomplete="current-password"
+                />
+                <button type="button" class="pwd-toggle" (click)="showCurrentPwd.update(v => !v)" [attr.aria-label]="showCurrentPwd() ? 'Ocultar' : 'Mostrar'">
+                  <svg *ngIf="!showCurrentPwd()" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                  <svg *ngIf="showCurrentPwd()" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                </button>
+              </div>
+              <p *ngIf="isInvalid('password', 'actual')" class="field-error" role="alert">{{ fieldError('password', 'actual') }}</p>
+            </div>
+
+            <!-- Nueva contraseña -->
+            <div class="form-group">
+              <label for="pwd-nueva" class="form-label">Nueva contraseña</label>
+              <div class="input-pwd-wrap">
+                <input
+                  id="pwd-nueva"
+                  [type]="showNewPwd() ? 'text' : 'password'"
+                  formControlName="nueva"
+                  class="form-input"
+                  [class.form-input--error]="isInvalid('password', 'nueva')"
+                  placeholder="Mínimo 8 caracteres"
+                  autocomplete="new-password"
+                />
+                <button type="button" class="pwd-toggle" (click)="showNewPwd.update(v => !v)" [attr.aria-label]="showNewPwd() ? 'Ocultar' : 'Mostrar'">
+                  <svg *ngIf="!showNewPwd()" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                  <svg *ngIf="showNewPwd()" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                </button>
+              </div>
+              <p *ngIf="isInvalid('password', 'nueva')" class="field-error" role="alert">{{ fieldError('password', 'nueva') }}</p>
+
+              <!-- Fortaleza -->
+              <div *ngIf="passwordForm.get('nueva')?.value" class="pwd-strength">
+                <div class="strength-bar">
+                  <div class="strength-fill" [class]="'fill--' + pwdStrengthClass()" [style.width.%]="pwdStrength() * 20"></div>
+                </div>
+                <span class="strength-label" [class]="'label--' + pwdStrengthClass()">{{ pwdStrengthLabel() }}</span>
+              </div>
+            </div>
+
+            <!-- Confirmar contraseña -->
+            <div class="form-group">
+              <label for="pwd-confirmar" class="form-label">Confirmar nueva contraseña</label>
+              <div class="input-pwd-wrap">
+                <input
+                  id="pwd-confirmar"
+                  [type]="showConfirmPwd() ? 'text' : 'password'"
+                  formControlName="confirmar"
+                  class="form-input"
+                  [class.form-input--error]="isInvalid('password', 'confirmar') || passwordForm.errors?.['mismatch']"
+                  placeholder="Repite la nueva contraseña"
+                  autocomplete="new-password"
+                />
+                <button type="button" class="pwd-toggle" (click)="showConfirmPwd.update(v => !v)" [attr.aria-label]="showConfirmPwd() ? 'Ocultar' : 'Mostrar'">
+                  <svg *ngIf="!showConfirmPwd()" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                  <svg *ngIf="showConfirmPwd()" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                </button>
+              </div>
+              <p *ngIf="passwordForm.errors?.['mismatch'] && passwordForm.get('confirmar')?.touched" class="field-error" role="alert">Las contraseñas no coinciden.</p>
+            </div>
+
+            <div class="form-actions">
+              <app-button
+                type="submit"
+                variant="primary"
+                [loading]="savingPassword()"
+                [disabled]="passwordForm.invalid"
+              >
+                {{ savingPassword() ? 'Guardando…' : 'Cambiar contraseña' }}
+              </app-button>
+            </div>
+
+          </form>
+        </section>
+
+      </div>
+    </main>
+  </div>
+</div>

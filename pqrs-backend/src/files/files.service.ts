@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PqrsAttachment } from '../pqrs/entities/pqrs-attachment.entity';
@@ -7,10 +14,12 @@ import { HistorialService } from '../pqrs/historial.service';
 import { PqrsEventType } from '../common/enums/pqrs-event-type.enum';
 import { Response } from 'express';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { THUMB_DEST, IMAGE_MIME_TYPES } from '../common/constants/upload.constants';
+import { MAX_FILES_PER_PQRS } from '../common/constants/allowed-file-types';
 
 export interface FileActor {
   id: string;
@@ -34,6 +43,19 @@ export class FilesService {
     files: Express.Multer.File[],
     actor?: FileActor | null,
   ): Promise<PqrsAttachment[]> {
+    if (!files || files.length === 0) return [];
+
+    // Verificar que no se supere el límite total de adjuntos por PQRS
+    const existentes = await this.attachmentRepository.count({ where: { pqrsId } });
+    if (existentes + files.length > MAX_FILES_PER_PQRS) {
+      files.forEach((f) => { try { fsSync.unlinkSync(f.path); } catch {} });
+      throw new BadRequestException(
+        `La PQRS ya tiene ${existentes} adjunto(s). ` +
+          `El límite es ${MAX_FILES_PER_PQRS}. ` +
+          `Solo puedes subir ${MAX_FILES_PER_PQRS - existentes} más.`,
+      );
+    }
+
     const attachments: PqrsAttachment[] = [];
 
     for (const file of files) {
@@ -90,14 +112,14 @@ export class FilesService {
   ): Promise<void> {
     const attachment = await this.attachmentRepository.findOne({
       where: { id: attachmentId },
-      relations: ['pqrs'] as any,
+      relations: { pqrs: true },
     });
 
     if (!attachment) {
       throw new NotFoundException('Attachment no encontrado');
     }
 
-    const isOwner = attachment.pqrs.userId === requestUser.id;
+    const isOwner = attachment.pqrs?.userId === requestUser.id;
     const isAdmin = requestUser.rol === 'admin';
 
     if (!isOwner && !isAdmin) {
@@ -142,14 +164,14 @@ export class FilesService {
   ): Promise<void> {
     const attachment = await this.attachmentRepository.findOne({
       where: { storedName },
-      relations: ['pqrs'] as any,
+      relations: { pqrs: true },
     });
 
     if (!attachment) {
       throw new NotFoundException('Archivo no encontrado');
     }
 
-    const isOwner = attachment.pqrs.userId === requestUser.id;
+    const isOwner = attachment.pqrs?.userId === requestUser.id;
     const isAdmin = requestUser.rol === 'admin';
 
     if (!isOwner && !isAdmin) {
@@ -179,7 +201,12 @@ export class FilesService {
       );
     }
 
-    res.sendFile(absolutePath);
+    await new Promise<void>((resolve, reject) => {
+      res.sendFile(absolutePath, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
   }
 
   async serveThumb(storedThumbName: string, res: Response): Promise<void> {
@@ -193,6 +220,11 @@ export class FilesService {
 
     res.setHeader('Content-Type', 'image/webp');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.sendFile(thumbPath);
+    await new Promise<void>((resolve, reject) => {
+      res.sendFile(thumbPath, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
   }
 }

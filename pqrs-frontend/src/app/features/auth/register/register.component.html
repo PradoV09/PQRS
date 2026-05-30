@@ -1,6 +1,6 @@
 <div class="register-container">
   <div class="register-card animate-slide-up">
-    <!-- Logo SVG del portal PQRS -->
+
     <div class="logo-container">
       <div class="logo-icon">
         <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -19,10 +19,9 @@
       <p>Regístrate para enviar y gestionar tus peticiones, quejas, reclamos y sugerencias</p>
     </div>
 
-    <!-- Mensaje de error general -->
     @if (errorMessage()) {
       <div class="alert alert-danger animate-fade-in" role="alert">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"></circle>
           <line x1="12" y1="8" x2="12" y2="12"></line>
           <line x1="12" y1="16" x2="12.01" y2="16"></line>
@@ -32,84 +31,66 @@
     }
 
     <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" novalidate>
-      <!-- Nombre Completo -->
-      <div class="form-group" [class.has-error]="shouldShowError('nombre')">
-        <label for="nombre">Nombre completo</label>
-        <div class="input-wrapper">
-          <input
-            id="nombre"
-            type="text"
-            formControlName="nombre"
-            placeholder="Ingresa tu nombre y apellido"
-            [disabled]="loading()"
-            required
-          />
-        </div>
-        @if (shouldShowError('nombre')) {
-          <div class="error-text">
-            @if (registerForm.get('nombre')?.hasError('required')) {
-              El nombre completo es obligatorio.
-            } @else if (registerForm.get('nombre')?.hasError('minlength')) {
-              El nombre debe tener al menos 2 caracteres.
-            } @else if (registerForm.get('nombre')?.hasError('maxlength')) {
-              El nombre no puede superar los 100 caracteres.
-            }
-          </div>
-        }
-      </div>
 
-      <!-- Correo Electrónico -->
-      <div class="form-group" [class.has-error]="shouldShowError('email')">
-        <label for="email">Correo electrónico</label>
-        <div class="input-wrapper">
-          <input
-            id="email"
-            type="email"
-            formControlName="email"
-            placeholder="nombre@correo.com"
-            [disabled]="loading()"
-            required
-          />
-        </div>
-        @if (shouldShowError('email')) {
-          <div class="error-text">
-            @if (registerForm.get('email')?.hasError('required')) {
-              El correo electrónico es obligatorio.
-            } @else if (registerForm.get('email')?.hasError('email')) {
-              Ingresa una dirección de correo electrónico válida.
-            }
-          </div>
-        }
-      </div>
+      <!-- Nombre -->
+      <app-form-field
+        [control]="registerForm.get('nombre')"
+        label="Nombre completo"
+        [required]="true"
+        [customMessages]="{ onlyLetters: 'Solo letras, espacios, apóstrofes y guiones.' }"
+      >
+        <input
+          type="text"
+          formControlName="nombre"
+          class="form-input"
+          [class.form-input--error]="shouldShowError('nombre')"
+          [class.form-input--valid]="registerForm.get('nombre')?.valid && registerForm.get('nombre')?.touched"
+          placeholder="Ingresa tu nombre y apellido"
+          autocomplete="name"
+        />
+      </app-form-field>
+
+      <!-- Email -->
+      <app-form-field
+        [control]="registerForm.get('email')"
+        label="Correo electrónico"
+        hint="Usa el correo con el que recibirás notificaciones."
+        [required]="true"
+        [customMessages]="{ emailTaken: 'Este correo ya está en uso. ¿Ya tienes cuenta?' }"
+      >
+        <input
+          type="email"
+          formControlName="email"
+          class="form-input"
+          [class.form-input--error]="shouldShowError('email')"
+          [class.form-input--valid]="registerForm.get('email')?.valid && registerForm.get('email')?.touched"
+          placeholder="nombre@correo.com"
+          autocomplete="email"
+        />
+      </app-form-field>
 
       <!-- Contraseña -->
       <div class="form-group" [class.has-error]="shouldShowError('password')">
-        <label for="password">Contraseña</label>
+        <label for="password">Contraseña <span class="form-required">*</span></label>
         <div class="input-wrapper">
           <input
             id="password"
             [type]="showPassword() ? 'text' : 'password'"
             formControlName="password"
+            class="form-input"
+            [class.form-input--error]="shouldShowError('password')"
+            [class.form-input--valid]="registerForm.get('password')?.valid && registerForm.get('password')?.touched"
             placeholder="Crea una contraseña segura"
-            [disabled]="loading()"
-            required
+            autocomplete="new-password"
           />
-          <button
-            type="button"
-            class="btn-toggle-password"
-            (click)="togglePasswordVisibility()"
-            tabindex="-1"
-            title="Mostrar/ocultar contraseña"
-          >
+          <button type="button" class="btn-toggle-password" (click)="togglePasswordVisibility()" tabindex="-1">
             @if (showPassword()) {
-              <!-- Eye Off Icon -->
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
                 <line x1="1" y1="1" x2="23" y2="23"></line>
               </svg>
             } @else {
-              <!-- Eye Icon -->
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
               </svg>
@@ -117,89 +98,67 @@
           </button>
         </div>
 
-        <!-- Indicador de fortaleza de contraseña -->
+        <!-- Indicador de fortaleza -->
         <div class="strength-meter">
           <div class="strength-bar-container">
-            <div
-              class="strength-bar"
-              [class]="passwordStrength.class"
-              [style.width.%]="passwordStrength.percentage"
-            ></div>
+            <div class="strength-bar" [class]="passwordStrength.class" [style.width.%]="passwordStrength.percentage"></div>
           </div>
-          <span class="strength-label" [class]="passwordStrength.class">
-            Fortaleza: {{ passwordStrength.label }}
-          </span>
+          <span class="strength-label" [class]="passwordStrength.class">Fortaleza: {{ passwordStrength.label }}</span>
         </div>
 
         @if (shouldShowError('password')) {
-          <div class="error-text">
-            @if (registerForm.get('password')?.hasError('required')) {
-              La contraseña es obligatoria.
-            } @else if (registerForm.get('password')?.hasError('minlength')) {
-              Debe tener al menos 8 caracteres.
-            } @else if (registerForm.get('password')?.hasError('pattern')) {
-              Debe incluir mayúscula, minúscula, número y un carácter especial.
-            }
-          </div>
+          <p class="form-error" role="alert">
+            @if (registerForm.get('password')?.hasError('required')) { La contraseña es obligatoria. }
+            @else if (registerForm.get('password')?.hasError('minlength')) { Debe tener al menos 8 caracteres. }
+            @else if (registerForm.get('password')?.hasError('strongPassword')) { Debe tener mayúscula, minúscula, número y carácter especial (@$!%*?&._-). }
+          </p>
         }
       </div>
 
-      <!-- Confirmar Contraseña -->
+      <!-- Confirmar contraseña -->
       <div class="form-group" [class.has-error]="shouldShowError('confirmPassword') || shouldShowMismatchError()">
-        <label for="confirmPassword">Confirmar contraseña</label>
+        <label for="confirmPassword">Confirmar contraseña <span class="form-required">*</span></label>
         <div class="input-wrapper">
           <input
             id="confirmPassword"
             [type]="showConfirmPassword() ? 'text' : 'password'"
             formControlName="confirmPassword"
+            class="form-input"
+            [class.form-input--error]="shouldShowError('confirmPassword') || shouldShowMismatchError()"
             placeholder="Repite tu contraseña"
-            [disabled]="loading()"
-            required
+            autocomplete="new-password"
           />
-          <button
-            type="button"
-            class="btn-toggle-password"
-            (click)="toggleConfirmPasswordVisibility()"
-            tabindex="-1"
-            title="Mostrar/ocultar contraseña"
-          >
+          <button type="button" class="btn-toggle-password" (click)="toggleConfirmPasswordVisibility()" tabindex="-1">
             @if (showConfirmPassword()) {
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
                 <line x1="1" y1="1" x2="23" y2="23"></line>
               </svg>
             } @else {
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
               </svg>
             }
           </button>
         </div>
-        @if (shouldShowError('confirmPassword')) {
-          <div class="error-text">
-            La confirmación de la contraseña es obligatoria.
-          </div>
+        @if (shouldShowError('confirmPassword') && registerForm.get('confirmPassword')?.hasError('required')) {
+          <p class="form-error">La confirmación de contraseña es obligatoria.</p>
         } @else if (shouldShowMismatchError()) {
-          <div class="error-text">
-            Las contraseñas no coinciden.
-          </div>
+          <p class="form-error">Las contraseñas no coinciden.</p>
         }
       </div>
 
-      <!-- Botón de Registro -->
-      <button
-        type="submit"
-        class="btn-submit"
-        [disabled]="loading() || registerForm.invalid"
-      >
+      <button type="submit" class="btn-submit" [disabled]="submitDisabled">
         @if (loading()) {
-          <span class="spinner"></span>
-          <span>Procesando registro...</span>
+          <span class="spinner"></span><span>Procesando registro...</span>
+        } @else if (registerForm.pending) {
+          <span class="spinner"></span><span>Verificando datos...</span>
         } @else {
           <span>Registrarse</span>
         }
       </button>
+
     </form>
 
     <div class="footer-links">

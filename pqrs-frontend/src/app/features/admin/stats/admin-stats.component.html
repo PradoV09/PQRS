@@ -1,0 +1,131 @@
+<div class="portal-layout">
+  <app-sidebar></app-sidebar>
+
+  <div class="portal-content">
+    <main class="main-content">
+
+      <div class="dashboard-header">
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-subtitle">Resumen general del sistema de PQRS</p>
+      </div>
+
+      @if (loading) {
+        <div class="loading-state">
+          <span class="spinner"></span> Cargando estadísticas…
+        </div>
+      }
+
+      @if (error) {
+        <div class="empty-state">
+          No se pudieron cargar las estadísticas.
+        </div>
+      }
+
+      @if (!loading && !error && stats) {
+
+        <!-- KPI cards -->
+        <div class="kpi-grid">
+
+          <div class="kpi-card kpi-total">
+            <span class="kpi-label">Total PQRS</span>
+            <span class="kpi-value">{{ stats.totalPqrs }}</span>
+          </div>
+
+          <div class="kpi-card kpi-pendiente">
+            <span class="kpi-label">Pendientes</span>
+            <span class="kpi-value">{{ stats.totalPendientes }}</span>
+          </div>
+
+          <div class="kpi-card kpi-proceso">
+            <span class="kpi-label">En proceso</span>
+            <span class="kpi-value">{{ stats.totalEnProceso }}</span>
+          </div>
+
+          <div class="kpi-card kpi-resuelta">
+            <span class="kpi-label">Resueltas</span>
+            <span class="kpi-value">{{ stats.totalResueltas }}</span>
+          </div>
+
+          <div class="kpi-card kpi-riesgo">
+            <span class="kpi-label">En riesgo</span>
+            <span class="kpi-value">{{ stats.pqrsEnRiesgo }}</span>
+            <span class="kpi-hint">+5 días sin cambio</span>
+          </div>
+
+          <div class="kpi-card kpi-semana">
+            <span class="kpi-label">Nuevas (7 días)</span>
+            <span class="kpi-value">{{ stats.creadasUltimos7Dias }}</span>
+          </div>
+
+          <div class="kpi-card kpi-tasa">
+            <span class="kpi-label">Tasa resolución</span>
+            <span class="kpi-value">{{ stats.tasaResolucion }}%</span>
+          </div>
+
+          <div class="kpi-card kpi-tiempo">
+            <span class="kpi-label">T. promedio resolución</span>
+            <span class="kpi-value">{{ formatHoras(stats.tiempoPromedioResolucion) }}</span>
+          </div>
+
+          <div class="kpi-card kpi-tiempo">
+            <span class="kpi-label">T. promedio respuesta</span>
+            <span class="kpi-value">{{ formatHoras(stats.tiempoPromedioRespuesta) }}</span>
+          </div>
+
+        </div>
+
+        <!-- Gráficas superiores -->
+        <div class="charts-row">
+
+          <div class="chart-card">
+            <h2 class="chart-title">Distribución por estado</h2>
+            <div class="chart-container">
+              <canvas baseChart
+                [data]="estadosChartData"
+                [options]="chartOptions"
+                type="doughnut">
+              </canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <h2 class="chart-title">Distribución por tipo</h2>
+            <div class="chart-container">
+              <canvas baseChart
+                [data]="tiposChartData"
+                [options]="chartOptions"
+                type="bar">
+              </canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <h2 class="chart-title">Distribución por prioridad</h2>
+            <div class="chart-container">
+              <canvas baseChart
+                [data]="prioridadChartData"
+                [options]="chartOptions"
+                type="doughnut">
+              </canvas>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Tendencia ancho completo -->
+        <div class="chart-card chart-full">
+          <h2 class="chart-title">Tendencia últimos 30 días</h2>
+          <div class="chart-container chart-container-tall">
+            <canvas baseChart
+              [data]="tendenciaChartData"
+              [options]="chartOptions"
+              type="line">
+            </canvas>
+          </div>
+        </div>
+
+      }
+
+    </main>
+  </div>
+</div>

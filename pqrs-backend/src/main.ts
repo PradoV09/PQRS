@@ -1,12 +1,15 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, HttpStatus } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import * as fs from 'fs';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { ValidationExceptionFilter } from './common/filters/validation-exception.filter';
+import { SanitizeResponseInterceptor } from './common/interceptors/sanitize-response.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -19,14 +22,15 @@ async function bootstrap() {
   }
 
   // Servir archivos estáticos desde /uploads
-  app.useStaticAssets(uploadsDir, {
-    prefix: '/uploads',
-  });
+  app.useStaticAssets(uploadsDir, { prefix: '/uploads' });
 
-  // Set global API prefix
+  // Prefijo global de API
   app.setGlobalPrefix('api');
 
-  // Use Helmet for security headers (configured to allow inline Swagger scripts)
+  // Cookie parser — necesario para leer refreshToken de cookie HttpOnly
+  app.use(cookieParser());
+
+  // Cabeceras de seguridad HTTP
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -40,29 +44,35 @@ async function bootstrap() {
     }),
   );
 
-  // Configure CORS restricted to the frontend origin with credentials
+  // CORS restringido al frontend — credentials:true para enviar cookies
   app.enableCors({
-    origin: 'http://localhost:4200',
+    origin: process.env.FRONTEND_URL ?? 'http://localhost:4200',
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
 
-  // Global Validation Pipe with strict whitelisting and auto-transformation
+  // Validación global de DTOs — 422 para errores de validación
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
       transformOptions: { enableImplicitConversion: true },
+      errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
     }),
   );
 
-  // Global Exception Filter for Multer errors and other HTTP exceptions
-  app.useGlobalFilters(new HttpExceptionFilter());
+  // Filtros de excepción globales
+  app.useGlobalFilters(new HttpExceptionFilter(), new ValidationExceptionFilter());
 
-  // Configure Swagger API Documentation
+  // Interceptor que elimina campos sensibles de todas las respuestas
+  app.useGlobalInterceptors(new SanitizeResponseInterceptor());
+
+  // Documentación Swagger
   const swaggerConfig = new DocumentBuilder()
     .setTitle('PQRS API')
-    .setDescription('Especificación de la API de PQRS con control de autenticación')
+    .setDescription('API de PQRS con autenticación JWT y control de acceso por roles')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
@@ -72,6 +82,6 @@ async function bootstrap() {
   const port = process.env.PORT || 3000;
   await app.listen(port);
   console.log(`Backend running on: http://localhost:${port}/api`);
-  console.log(`Swagger Documentation available at: http://localhost:${port}/api/docs`);
+  console.log(`Swagger Docs: http://localhost:${port}/api/docs`);
 }
 bootstrap();

@@ -3,23 +3,27 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThanOrEqual, Not } from 'typeorm';
 import { Pqrs } from './entities/pqrs.entity';
 import { PqrsAttachment } from './entities/pqrs-attachment.entity';
 import { PqrsRespuesta } from './entities/pqrs-respuesta.entity';
+import { PqrsHistorial } from './entities/pqrs-historial.entity';
 import { CreatePqrsDto } from './dto/create-pqrs.dto';
 import { PqrsQueryDto } from './dto/pqrs-query.dto';
 import { CreateRespuestaDto } from './dto/create-respuesta.dto';
 import { UpdatePqrsStatusDto } from './dto/update-pqrs-status.dto';
 import { UpdatePriorityDto } from './dto/update-priority.dto';
+import { DashboardStatsDto } from './dto/dashboard-stats.dto';
 import { PqrsStatus } from '../common/enums/pqrs-status.enum';
 import { PqrsType } from '../common/enums/pqrs-type.enum';
 import { PqrsPriority } from '../common/enums/pqrs-priority.enum';
 import { calcularFechaLimite } from '../common/utils/sla.utils';
 import { PqrsEventType } from '../common/enums/pqrs-event-type.enum';
 import { HistorialService } from './historial.service';
+import { EmailService } from '../notifications/email.service';
 import { UserRole } from '../users/entities/user.entity';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -34,7 +38,10 @@ export class PqrsService {
     private readonly attachmentRepository: Repository<PqrsAttachment>,
     @InjectRepository(PqrsRespuesta)
     private readonly respuestaRepository: Repository<PqrsRespuesta>,
+    @InjectRepository(PqrsHistorial)
+    private readonly historialRepo: Repository<PqrsHistorial>,
     private readonly historialService: HistorialService,
+    private readonly emailService: EmailService,
   ) { }
 
   /**
@@ -44,8 +51,22 @@ export class PqrsService {
     createDto: CreatePqrsDto,
     userId: string,
     files: any[],
-    actor: { id: string; nombre: string },
+    actor: { id: string; nombre: string; email?: string },
   ): Promise<Pqrs> {
+    // Regla de negocio: máximo 10 PQRS activas por usuario
+    const activasCount = await this.pqrsRepository
+      .createQueryBuilder('p')
+      .where('p.userId = :userId', { userId })
+      .andWhere(`p.estado NOT IN ('resuelto', 'cerrado')`)
+      .getCount();
+
+    if (activasCount >= 10) {
+      throw new BadRequestException(
+        'Has alcanzado el límite de 10 PQRS activas. ' +
+          'Espera a que alguna sea resuelta o cerrada antes de crear una nueva.',
+      );
+    }
+
     const { titulo, descripcion, tipo, prioridad } = createDto;
 
     const pqrs = this.pqrsRepository.create({
@@ -104,6 +125,16 @@ export class PqrsService {
           descripcion: `${actor.nombre} subió el archivo "${attachment.filename}"`,
         });
       }
+    }
+
+    if (actor.email) {
+      this.emailService.sendPqrsCreada({
+        to:      actor.email,
+        nombre:  actor.nombre,
+        pqrsId:  savedPqrs.id,
+        titulo:  savedPqrs.titulo,
+        tipo:    savedPqrs.tipo,
+      });
     }
 
     return savedPqrs;
@@ -305,7 +336,10 @@ export class PqrsService {
     userId: string,
     userRole: string,
   ): Promise<any> {
-    const pqrs = await this.pqrsRepository.findOne({ where: { id: pqrsId } });
+    const pqrs = await this.pqrsRepository.findOne({
+      where: { id: pqrsId },
+      relations: { user: true },
+    });
     if (!pqrs) {
       throw new NotFoundException(`La PQRS con ID ${pqrsId} no existe.`);
     }
@@ -389,6 +423,20 @@ export class PqrsService {
       });
     }
 
+    // Notificar al ciudadano solo cuando el admin responde
+    if (esAdmin && pqrs.user?.email) {
+      this.emailService.sendNuevaRespuesta({
+        to:          pqrs.user.email,
+        nombre:      pqrs.user.nombre,
+        pqrsId:      pqrs.id,
+        titulo:      pqrs.titulo,
+        tipo:        pqrs.tipo,
+        respuesta:   fullRespuesta.contenido,
+        autorNombre: actor.nombre,
+        esAdmin:     true,
+      });
+    }
+
     return {
       id: fullRespuesta.id,
       contenido: fullRespuesta.contenido,
@@ -416,8 +464,8 @@ export class PqrsService {
     adminActor?: { id: string; nombre: string },
   ): Promise<any> {
     // Si se pasa el rol, verificarlo en el servicio para mayor seguridad
-    if (adminRole && adminRole !== UserRole.ADMIN) {
-      throw new ForbiddenException('Solo los administradores pueden cambiar el estado de una PQRS.');
+    if (adminRole && adminRole !== UserRole.ADMIN && adminRole !== UserRole.SUPERVISOR) {
+      throw new ForbiddenException('Solo los administradores o funcionarios pueden cambiar el estado de una PQRS.');
     }
 
     const pqrs = await this.pqrsRepository.findOne({
@@ -464,6 +512,19 @@ export class PqrsService {
       },
       descripcion: `Estado cambiado de '${currentStatus}' a '${newStatus}'`,
     });
+
+    // Notificar al ciudadano sobre el cambio de estado
+    if (pqrs.user?.email) {
+      this.emailService.sendCambioEstado({
+        to:             pqrs.user.email,
+        nombre:         pqrs.user.nombre,
+        pqrsId:         id,
+        titulo:         pqrs.titulo,
+        tipo:           pqrs.tipo,
+        estadoAnterior: currentStatus,
+        estadoNuevo:    newStatus,
+      });
+    }
 
     return {
       id: updated.id,
@@ -666,6 +727,140 @@ export class PqrsService {
       urgentesAbiertas,
       ultimosSieteDias,
       tiempoPromedioResolucion,
+    };
+  }
+
+  /**
+   * Estadísticas agregadas para el dashboard administrativo.
+   */
+  async getDashboardStats(): Promise<DashboardStatsDto> {
+    // 1. Contadores por estado
+    const contadores = await this.pqrsRepository
+      .createQueryBuilder('p')
+      .select('p.estado', 'estado')
+      .addSelect('COUNT(*)', 'cantidad')
+      .groupBy('p.estado')
+      .getRawMany();
+
+    // 2. Distribución por tipo
+    const porTipoRaw = await this.pqrsRepository
+      .createQueryBuilder('p')
+      .select('p.tipo', 'tipo')
+      .addSelect('COUNT(*)', 'cantidad')
+      .groupBy('p.tipo')
+      .getRawMany();
+
+    // 3. Distribución por prioridad
+    const porPrioridadRaw = await this.pqrsRepository
+      .createQueryBuilder('p')
+      .select('p.prioridad', 'prioridad')
+      .addSelect('COUNT(*)', 'cantidad')
+      .groupBy('p.prioridad')
+      .getRawMany();
+
+    // 4. Tiempo promedio de resolución (horas): createdAt → primer evento estado=resuelto
+    const tiempoResolucionRaw = await this.historialRepo
+      .createQueryBuilder('h')
+      .innerJoin('h.pqrs', 'p')
+      .select(
+        `AVG(EXTRACT(EPOCH FROM (h.createdAt - p.createdAt)) / 3600)`,
+        'promedio',
+      )
+      .where('h.tipoEvento = :tipo', { tipo: PqrsEventType.ESTADO_CAMBIADO })
+      .andWhere(`h.detalle->>'estadoNuevo' = :estado`, { estado: PqrsStatus.RESUELTO })
+      .getRawOne();
+
+    // 5. Tiempo promedio de primera respuesta admin (horas)
+    const tiempoRespuestaRaw = await this.historialRepo
+      .createQueryBuilder('h')
+      .innerJoin('h.pqrs', 'p')
+      .select(
+        `AVG(EXTRACT(EPOCH FROM (h.createdAt - p.createdAt)) / 3600)`,
+        'promedio',
+      )
+      .where('h.tipoEvento = :tipo', { tipo: PqrsEventType.RESPUESTA_AGREGADA })
+      .andWhere(`h.detalle->>'esAdmin' = 'true'`)
+      .andWhere(`h."createdAt" = (
+        SELECT MIN(h2."createdAt") FROM pqrs_historial h2
+        WHERE h2."pqrsId" = h."pqrsId"
+          AND h2."tipoEvento" = 'respuesta_agregada'
+          AND h2.detalle->>'esAdmin' = 'true'
+      )`)
+      .getRawOne();
+
+    // 6. Creadas por día (últimos 30 días)
+    const creadasPorDiaRaw = await this.pqrsRepository
+      .createQueryBuilder('p')
+      .select(`DATE(p.createdAt)`, 'fecha')
+      .addSelect('COUNT(*)', 'cantidad')
+      .where(`p.createdAt >= NOW() - INTERVAL '30 days'`)
+      .groupBy(`DATE(p.createdAt)`)
+      .orderBy(`DATE(p.createdAt)`, 'ASC')
+      .getRawMany();
+
+    // 7. Resueltas por día (últimos 30 días) — primer evento de resolución por día
+    const resueltasPorDiaRaw = await this.historialRepo
+      .createQueryBuilder('h')
+      .select(`DATE(h.createdAt)`, 'fecha')
+      .addSelect('COUNT(*)', 'cantidad')
+      .where('h.tipoEvento = :tipo', { tipo: PqrsEventType.ESTADO_CAMBIADO })
+      .andWhere(`h.detalle->>'estadoNuevo' = :estado`, { estado: PqrsStatus.RESUELTO })
+      .andWhere(`h.createdAt >= NOW() - INTERVAL '30 days'`)
+      .groupBy(`DATE(h.createdAt)`)
+      .orderBy(`DATE(h.createdAt)`, 'ASC')
+      .getRawMany();
+
+    // 8. Creadas en últimos 7 días
+    const creadasUltimos7Dias = await this.pqrsRepository
+      .createQueryBuilder('p')
+      .where(`p.createdAt >= NOW() - INTERVAL '7 days'`)
+      .getCount();
+
+    // 9. PQRS en riesgo: activas sin cambio de estado en más de 5 días
+    const pqrsEnRiesgo = await this.pqrsRepository
+      .createQueryBuilder('p')
+      .where(`p.estado NOT IN ('resuelto', 'cerrado')`)
+      .andWhere(`p.updatedAt < NOW() - INTERVAL '5 days'`)
+      .getCount();
+
+    // 10. Totales y tasa
+    const getCount = (estado: string) =>
+      Number(contadores.find((c) => c.estado === estado)?.cantidad ?? 0);
+
+    const totalPqrs = await this.pqrsRepository.count();
+    const totalResueltas = getCount(PqrsStatus.RESUELTO);
+    const tasaResolucion =
+      totalPqrs > 0 ? Math.round((totalResueltas / totalPqrs) * 100) : 0;
+
+    return {
+      totalPqrs,
+      totalPendientes: getCount(PqrsStatus.PENDIENTE),
+      totalEnProceso: getCount(PqrsStatus.EN_PROCESO),
+      totalResueltas,
+      totalRechazadas: 0,
+      totalCerradas: getCount(PqrsStatus.CERRADO),
+      porTipo: porTipoRaw.map((r) => ({ tipo: r.tipo, cantidad: Number(r.cantidad) })),
+      porPrioridad: porPrioridadRaw.map((r) => ({
+        prioridad: r.prioridad,
+        cantidad: Number(r.cantidad),
+      })),
+      tiempoPromedioResolucion: tiempoResolucionRaw?.promedio
+        ? Math.round(Number(tiempoResolucionRaw.promedio) * 10) / 10
+        : null,
+      tiempoPromedioRespuesta: tiempoRespuestaRaw?.promedio
+        ? Math.round(Number(tiempoRespuestaRaw.promedio) * 10) / 10
+        : null,
+      creadasPorDia: creadasPorDiaRaw.map((r) => ({
+        fecha: r.fecha,
+        cantidad: Number(r.cantidad),
+      })),
+      resueltasPorDia: resueltasPorDiaRaw.map((r) => ({
+        fecha: r.fecha,
+        cantidad: Number(r.cantidad),
+      })),
+      tasaResolucion,
+      creadasUltimos7Dias,
+      pqrsEnRiesgo,
     };
   }
 

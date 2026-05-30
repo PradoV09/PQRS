@@ -12,6 +12,7 @@ import { PriorityBadgeComponent } from '../../../shared/components/priority-badg
 import { PqrsTimelineComponent } from '../../../shared/components/pqrs-timeline/pqrs-timeline.component';
 import { SidebarComponent } from '../../../shared/components/sidebar/sidebar.component';
 import { AttachmentGalleryComponent } from '../../../shared/components/attachment-gallery/attachment-gallery.component';
+import { ConfirmModalComponent } from '../../../shared/components/confirm-modal/confirm-modal.component';
 import { getValidTransitions, isFinalState, STATUS_LABELS } from '../../../core/utils/pqrs-transitions';
 import { PRIORITY_CONFIG, PRIORITY_OPTIONS } from '../../../core/constants/pqrs-priority.constants';
 
@@ -28,6 +29,7 @@ import { PRIORITY_CONFIG, PRIORITY_OPTIONS } from '../../../core/constants/pqrs-
     PqrsTimelineComponent,
     SidebarComponent,
     AttachmentGalleryComponent,
+    ConfirmModalComponent,
   ],
   templateUrl: './pqrs-detail.component.html',
   styleUrl: './pqrs-detail.component.css',
@@ -55,6 +57,9 @@ export class PqrsDetailComponent implements OnInit {
 
   selectedNewStatus = signal<PqrsStatus | ''>('');
   nuevaPrioridad = signal<PqrsPriority>(PqrsPriority.MEDIA);
+  showStatusModal = signal(false);
+  pendingStatus   = signal<PqrsStatus | ''>('');
+  showDeleteModal = signal(false);
 
   priorityOptions = PRIORITY_OPTIONS;
   priorityConfig = PRIORITY_CONFIG;
@@ -159,9 +164,16 @@ export class PqrsDetailComponent implements OnInit {
     return getValidTransitions(current);
   }
 
+  requestStatusChange(): void {
+    if (!this.selectedNewStatus()) return;
+    this.pendingStatus.set(this.selectedNewStatus());
+    this.showStatusModal.set(true);
+  }
+
   onUpdateStatus(): void {
-    const newStatus = this.selectedNewStatus();
+    const newStatus = this.pendingStatus() || this.selectedNewStatus();
     const pqrsId = this.pqrs()?.id;
+    this.showStatusModal.set(false);
 
     if (!newStatus || !pqrsId) return;
 
@@ -251,25 +263,24 @@ export class PqrsDetailComponent implements OnInit {
     });
   }
 
+  requestDelete(): void {
+    this.showDeleteModal.set(true);
+  }
+
   onDeletePqrs(): void {
     const pqrsId = this.pqrs()?.id;
+    this.showDeleteModal.set(false);
     if (!pqrsId) return;
 
-    const confirmDelete = confirm(
-      '¿Estás seguro de que deseas eliminar esta PQRS? Esta acción es irreversible, borrará permanentemente la solicitud y todos sus archivos asociados.'
-    );
-
-    if (confirmDelete) {
-      this.pqrsService.delete(pqrsId).subscribe({
-        next: () => {
-          this.toastService.success('PQRS eliminada correctamente.');
-          this.router.navigate(['/pqrs']);
-        },
-        error: () => {
-          this.toastService.error('Ocurrió un error al intentar eliminar la PQRS.');
-        },
-      });
-    }
+    this.pqrsService.delete(pqrsId).subscribe({
+      next: () => {
+        this.toastService.success('PQRS eliminada correctamente.');
+        this.router.navigate(['/pqrs']);
+      },
+      error: () => {
+        this.toastService.error('Ocurrió un error al intentar eliminar la PQRS.');
+      },
+    });
   }
 
   onAttachmentDeleted(attachmentId: string): void {

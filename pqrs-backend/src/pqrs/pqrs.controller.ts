@@ -41,6 +41,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/entities/user.entity';
 import { PqrsStatus } from '../common/enums/pqrs-status.enum';
 import { multerOptions } from './config/multer.config';
+import { FileTypeValidationPipe } from '../files/pipes/file-type-validation.pipe';
+import { MAX_FILES_PER_PQRS } from '../common/constants/allowed-file-types';
 
 @ApiTags('PQRS')
 @ApiBearerAuth()
@@ -60,7 +62,7 @@ export class PqrsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  @UseInterceptors(FilesInterceptor('files', 5, multerOptions()))
+  @UseInterceptors(FilesInterceptor('files', MAX_FILES_PER_PQRS, multerOptions()))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Crear una nueva PQRS con archivos adjuntos' })
   @ApiBody({
@@ -74,7 +76,7 @@ export class PqrsController {
         files: {
           type: 'array',
           items: { type: 'string', format: 'binary' },
-          description: 'Archivos adjuntos (máx 5, 10MB c/u)',
+          description: 'Archivos adjuntos — solo PDF, JPG, PNG, DOCX · máx 5 · 10 MB c/u',
         },
       },
       required: ['titulo', 'descripcion', 'tipo'],
@@ -82,14 +84,15 @@ export class PqrsController {
   })
   @ApiResponse({ status: 201, description: 'PQRS creada exitosamente.' })
   @ApiResponse({ status: 400, description: 'Datos inválidos o archivos no permitidos.' })
+  @ApiResponse({ status: 415, description: 'Tipo de archivo no permitido o firma binaria inválida.' })
   @ApiResponse({ status: 429, description: 'Demasiadas solicitudes. Límite de 5 por minuto.' })
   async create(
     @Body() createPqrsDto: CreatePqrsDto,
     @Req() req: any,
-    @UploadedFiles() files: Express.Multer.File[],
+    @UploadedFiles(new FileTypeValidationPipe()) files: Express.Multer.File[],
   ) {
     const userId = req.user.id;
-    const actor = { id: req.user.id, nombre: req.user.nombre };
+    const actor = { id: req.user.id, nombre: req.user.nombre, email: req.user.email };
     return this.pqrsService.create(createPqrsDto, userId, files, actor);
   }
 
@@ -97,7 +100,7 @@ export class PqrsController {
    * Obtener estadísticas generales (Solo Administrador).
    */
   @Get('stats')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Obtener estadísticas generales de PQRS (Solo Admin)' })
   @ApiResponse({ status: 200, description: 'Estadísticas recuperadas exitosamente.' })
@@ -180,17 +183,18 @@ export class PqrsController {
   @Post(':id/attachments')
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ default: { limit: 10, ttl: 3600000 } })
-  @UseInterceptors(FilesInterceptor('files', 5, multerOptions()))
+  @UseInterceptors(FilesInterceptor('files', MAX_FILES_PER_PQRS, multerOptions()))
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Agregar archivos adicionales a una PQRS' })
+  @ApiOperation({ summary: 'Agregar archivos adicionales a una PQRS (PDF, JPG, PNG, DOCX)' })
   @ApiResponse({ status: 201, description: 'Archivos agregados exitosamente.' })
-  @ApiResponse({ status: 400, description: 'PQRS cerrada o archivos no permitidos.' })
+  @ApiResponse({ status: 400, description: 'PQRS cerrada, archivos no permitidos o límite superado.' })
   @ApiResponse({ status: 403, description: 'Acceso denegado.' })
   @ApiResponse({ status: 404, description: 'PQRS no encontrada.' })
+  @ApiResponse({ status: 415, description: 'Tipo de archivo no permitido o firma binaria inválida.' })
   async addAttachments(
     @Param('id') id: string,
     @Req() req: any,
-    @UploadedFiles() files: Express.Multer.File[],
+    @UploadedFiles(new FileTypeValidationPipe()) files: Express.Multer.File[],
   ) {
     const userId = req.user.id;
     const userRole = req.user.rol;
@@ -221,7 +225,7 @@ export class PqrsController {
    * Respeta la máquina de estados.
    */
   @Patch(':id/status')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Actualizar el estado de una PQRS (Solo Admin)' })
   @ApiResponse({ status: 200, description: 'Estado actualizado exitosamente.' })
@@ -243,7 +247,7 @@ export class PqrsController {
    * Actualizar la prioridad de una PQRS (Solo Administrador).
    */
   @Patch(':id/priority')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Actualizar la prioridad de una PQRS (Solo Admin)' })
   @ApiResponse({ status: 200, description: 'Prioridad actualizada exitosamente.' })

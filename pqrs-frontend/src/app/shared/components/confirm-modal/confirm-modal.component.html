@@ -1,0 +1,34 @@
+<div
+  class="modal-backdrop"
+  (click)="cancelled.emit()"
+  role="dialog"
+  aria-modal="true"
+  [attr.aria-label]="title"
+>
+  <div class="modal-box" (click)="$event.stopPropagation()">
+    <div class="modal-icon modal-icon--{{ variant }}" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+        <line x1="12" y1="9" x2="12" y2="13"></line>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+    </div>
+
+    <h2 class="modal-title">{{ title }}</h2>
+    <p class="modal-message">{{ message }}</p>
+
+    <div class="modal-actions">
+      <app-button
+        variant="secondary"
+        (click)="cancelled.emit()"
+        [disabled]="loading"
+      >{{ cancelLabel }}</app-button>
+
+      <app-button
+        [variant]="variant === 'warning' ? 'primary' : variant"
+        (click)="confirmed.emit()"
+        [loading]="loading"
+      >{{ confirmLabel }}</app-button>
+    </div>
+  </div>
+</div>

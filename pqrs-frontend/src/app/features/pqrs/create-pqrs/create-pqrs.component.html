@@ -1,28 +1,39 @@
 <div class="portal-layout">
-  <!-- Barra lateral de navegación -->
   <app-sidebar></app-sidebar>
 
-  <!-- Contenido principal -->
-  <div class="portal-content">
+  <div class="portal-content" id="main-content">
+    <app-topbar (menuOpen)="openMobileSidebar()"></app-topbar>
+
+    <!-- Modal confirmar cancelar -->
+    <app-confirm-modal
+      *ngIf="showCancelModal()"
+      title="¿Descartar borrador?"
+      message="Tienes datos sin guardar. Si cancelas ahora, se perderán. ¿Deseas salir de todas formas?"
+      confirmLabel="Sí, descartar"
+      cancelLabel="Continuar editando"
+      variant="warning"
+      (confirmed)="confirmCancel()"
+      (cancelled)="showCancelModal.set(false)"
+    ></app-confirm-modal>
+
     <div class="create-pqrs-container">
       <div class="create-pqrs-card animate-slide-up">
-        <!-- Encabezado de la página -->
+
         <div class="card-header">
-          <a routerLink="/pqrs" class="btn-back">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <button class="btn-back" (click)="requestCancel()" aria-label="Volver a la lista">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <line x1="19" y1="12" x2="5" y2="12"></line>
               <polyline points="12 19 5 12 12 5"></polyline>
             </svg>
             <span>Volver a la lista</span>
-          </a>
+          </button>
           <h1>Registrar Nueva PQRS</h1>
-          <p class="subtitle">Escribe los detalles de tu solicitud. Puedes adjuntar hasta 5 archivos como soporte (imágenes, PDFs, Word, videos).</p>
+          <p class="subtitle">Escribe los detalles de tu solicitud. Puedes adjuntar hasta 5 archivos como soporte (PDF, JPG, PNG, DOCX).</p>
         </div>
 
-        <!-- Error del servidor -->
         @if (errorMessage()) {
           <div class="alert alert-danger animate-fade-in" role="alert">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"></circle>
               <line x1="12" y1="8" x2="12" y2="12"></line>
               <line x1="12" y1="16" x2="12.01" y2="16"></line>
@@ -31,14 +42,13 @@
           </div>
         }
 
-        <!-- Formulario reactivo -->
         <form [formGroup]="pqrsForm" (ngSubmit)="onSubmit()" novalidate>
-          
-          <!-- Fila: Tipo de Solicitud -->
+
+          <!-- Tipo de Solicitud -->
           <div class="form-group" [class.has-error]="shouldShowError('tipo')">
-            <label for="tipo">Tipo de Solicitud</label>
+            <label for="tipo">Tipo de Solicitud <span class="form-required">*</span></label>
             <div class="select-wrapper">
-              <select id="tipo" formControlName="tipo" [disabled]="loading()">
+              <select id="tipo" formControlName="tipo">
                 <option value="" disabled selected>Selecciona una opción</option>
                 <option value="peticion">Petición</option>
                 <option value="queja">Queja</option>
@@ -46,7 +56,7 @@
                 <option value="sugerencia">Sugerencia</option>
               </select>
               <div class="select-arrow">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
               </div>
             </div>
             @if (shouldShowError('tipo')) {
@@ -54,102 +64,107 @@
             }
           </div>
 
-          <!-- Fila: Prioridad -->
+          <!-- Prioridad -->
           <div class="form-group" [class.has-error]="shouldShowError('prioridad')">
             <label for="prioridad">Prioridad</label>
             <div class="select-wrapper">
-              <select id="prioridad" formControlName="prioridad" [disabled]="loading()">
-                <option *ngFor="let opt of availablePriorityOptions" [value]="opt.value">
-                  {{ opt.label }}
-                </option>
+              <select id="prioridad" formControlName="prioridad">
+                <option *ngFor="let opt of availablePriorityOptions" [value]="opt.value">{{ opt.label }}</option>
               </select>
               <div class="select-arrow">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
               </div>
             </div>
             <p class="field-hint">
-              Selecciona la urgencia de tu solicitud.
               Plazo estimado de respuesta: <strong>{{ slaLabel }}</strong>
             </p>
             @if (showPriorityHint()) {
-              <p class="field-hint priority-suggestion">
-                Hemos sugerido una prioridad acorde al tipo de solicitud seleccionado. Puedes ajustarla si lo consideras necesario.
-              </p>
-            }
-            @if (shouldShowError('prioridad')) {
-              <span class="error-text">La prioridad es obligatoria.</span>
+              <p class="field-hint priority-suggestion">Se ha sugerido una prioridad según el tipo de solicitud. Puedes ajustarla.</p>
             }
           </div>
 
-          <!-- Fila: Título -->
+          <!-- Título -->
           <div class="form-group" [class.has-error]="shouldShowError('titulo')">
-            <label for="titulo">Título de la Solicitud</label>
+            <label for="titulo">Título de la Solicitud <span class="form-required">*</span></label>
             <input
               id="titulo"
               type="text"
               formControlName="titulo"
-              placeholder="Escribe un título claro y conciso"
-              [disabled]="loading()"
-              required
+              class="form-input"
+              [class.form-input--error]="shouldShowError('titulo')"
+              [class.form-input--valid]="pqrsForm.get('titulo')?.valid && pqrsForm.get('titulo')?.touched"
+              placeholder="Escribe un título claro y conciso (mín. 10 caracteres)"
+              maxlength="150"
             />
+            <div class="char-counter">
+              <span [class.char-counter--warn]="(tituloLength$ | async)! >= 130">
+                {{ tituloLength$ | async }} / 150
+              </span>
+            </div>
             @if (shouldShowError('titulo')) {
               <span class="error-text">
-                @if (pqrsForm.get('titulo')?.hasError('required')) {
+                @if (pqrsForm.get('titulo')?.hasError('required') || pqrsForm.get('titulo')?.hasError('noWhitespace')) {
                   El título es obligatorio.
                 } @else if (pqrsForm.get('titulo')?.hasError('minlength')) {
-                  El título debe tener al menos 5 caracteres.
+                  El título debe tener al menos 10 caracteres.
                 } @else if (pqrsForm.get('titulo')?.hasError('maxlength')) {
-                  El título no puede superar los 200 caracteres.
+                  El título no puede superar 150 caracteres.
                 }
               </span>
             }
           </div>
 
-          <!-- Fila: Descripción -->
+          <!-- Descripción -->
           <div class="form-group" [class.has-error]="shouldShowError('descripcion')">
-            <label for="descripcion">Descripción Detallada</label>
+            <label for="descripcion">Descripción Detallada <span class="form-required">*</span></label>
             <textarea
               id="descripcion"
               formControlName="descripcion"
+              class="form-input"
+              [class.form-input--error]="shouldShowError('descripcion')"
+              [class.form-input--valid]="pqrsForm.get('descripcion')?.valid && pqrsForm.get('descripcion')?.touched"
               rows="6"
-              placeholder="Describe detalladamente los hechos, fechas o cualquier información de soporte relevante..."
-              [disabled]="loading()"
-              required
+              placeholder="Describe detalladamente los hechos, fechas o cualquier información de soporte (mín. 30 caracteres)..."
+              maxlength="2000"
             ></textarea>
+            <div class="char-counter">
+              <span [class.char-counter--warn]="(descripcionLength$ | async)! >= 1800">
+                {{ descripcionLength$ | async }} / 2000
+              </span>
+            </div>
             @if (shouldShowError('descripcion')) {
               <span class="error-text">
-                @if (pqrsForm.get('descripcion')?.hasError('required')) {
+                @if (pqrsForm.get('descripcion')?.hasError('required') || pqrsForm.get('descripcion')?.hasError('noWhitespace')) {
                   La descripción es obligatoria.
                 } @else if (pqrsForm.get('descripcion')?.hasError('minlength')) {
-                  La descripción debe detallar al menos 10 caracteres.
+                  La descripción debe tener al menos 30 caracteres.
+                } @else if (pqrsForm.get('descripcion')?.hasError('maxlength')) {
+                  La descripción no puede superar 2000 caracteres.
                 }
               </span>
             }
           </div>
 
-          <!-- Zona de carga de archivos (Drag & Drop) -->
+          <!-- Archivos -->
           <div class="form-group">
             <label>Documentos y archivos de soporte (Opcional)</label>
-            <app-upload-zone
-              [maxFiles]="5"
-              [maxSizeMB]="10"
-              (filesSelected)="onFilesSelected($event)">
-            </app-upload-zone>
+            <app-upload-zone [maxFiles]="5" [maxSizeMB]="10" (filesSelected)="onFilesSelected($event)"></app-upload-zone>
           </div>
 
-          <!-- Botón de guardar -->
-          <button
-            type="submit"
-            class="btn-submit"
-            [disabled]="loading() || pqrsForm.invalid"
-          >
-            @if (loading()) {
-              <span class="spinner"></span>
-              <span>Guardando solicitud...</span>
-            } @else {
-              <span>Enviar Solicitud</span>
-            }
-          </button>
+          <div class="form-actions">
+            <button type="button" class="btn-cancel-form" (click)="requestCancel()" [disabled]="loading()">
+              Cancelar
+            </button>
+            <app-button
+              type="submit"
+              variant="primary"
+              [loading]="loading()"
+              [disabled]="pqrsForm.invalid && submitted()"
+              size="lg"
+            >
+              {{ loading() ? 'Enviando…' : 'Enviar solicitud' }}
+            </app-button>
+          </div>
 
         </form>
       </div>
