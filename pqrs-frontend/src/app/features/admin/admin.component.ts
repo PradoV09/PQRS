@@ -7,6 +7,7 @@ import { Pqrs, PqrsStatus, PqrsType } from '../../core/models/pqrs.model';
 import { User } from '../../core/models/user.model';
 import { AuthService } from '../../core/services/auth.service';
 import { FilesService } from '../../core/services/files.service';
+import { ToastService } from '../../core/services/toast.service';
 import { SidebarComponent } from '../../shared/components/sidebar/sidebar.component';
 import { PqrsTypePipe } from '../../shared/pipes/pqrs-type.pipe';
 import { getValidTransitions, isFinalState, STATUS_LABELS } from '../../core/utils/pqrs-transitions';
@@ -27,6 +28,7 @@ export class AdminComponent implements OnInit {
   private readonly usersService = inject(UsersService);
   private readonly authService = inject(AuthService);
   private readonly filesService = inject(FilesService);
+  private readonly toastService = inject(ToastService);
 
   // Role helpers
   readonly isAdmin = computed(() => this.authService.currentUser()?.rol === 'admin');
@@ -373,8 +375,9 @@ export class AdminComponent implements OnInit {
     });
   }
 
-  downloadAttachment(storedName: string): void {
-    window.open(this.filesService.getFileUrl(storedName, true), '_blank');
+  downloadAttachment(storedName: string, filename: string): void {
+    this.filesService.downloadFile(storedName, filename, true)
+      .catch(() => this.toastService.error('No se pudo descargar el archivo.'));
   }
 
   // Helpers

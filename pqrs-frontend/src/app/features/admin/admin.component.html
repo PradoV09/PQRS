@@ -592,7 +592,7 @@
                   <span class="detail-label">Archivos</span>
                   <span class="detail-value">
                     @for (att of pqrs.attachments; track att.id) {
-                      <button class="btn-download" (click)="downloadAttachment(att.storedName)">
+                      <button class="btn-download" (click)="downloadAttachment(att.storedName, att.filename)">
                         <svg
                           viewBox="0 0 24 24"
                           width="14"

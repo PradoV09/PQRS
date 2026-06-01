@@ -2,6 +2,7 @@ import { Controller, Get, Delete, Param, Query, Res, Req, UseGuards, HttpCode, H
 import type { Response } from 'express';
 import { FilesService } from './files.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Public } from '../common/decorators/public.decorator';
 
 @Controller('files')
 @UseGuards(JwtAuthGuard)
@@ -21,6 +22,7 @@ export class FilesController {
   }
 
   @Get('thumb/:thumbName')
+  @Public()
   async serveThumb(
     @Param('thumbName') thumbName: string,
     @Res() res: Response,

@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { FilesService } from '../../../core/services/files.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { PqrsAttachment } from '../../../core/models/pqrs.model';
+import { AuthImagePipe } from '../../../shared/pipes/auth-image.pipe';
 
 @Component({
   selector: 'app-attachment-gallery',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AuthImagePipe],
   templateUrl: './attachment-gallery.component.html',
   styleUrl: './attachment-gallery.component.css',
 })
@@ -46,11 +47,15 @@ export class AttachmentGalleryComponent {
   }
 
   openFile(attachment: PqrsAttachment): void {
-    window.open(this.filesService.getFileUrl(attachment.storedName), '_blank');
+    // Usamos HttpClient (con el interceptor JWT) para obtener el blob y abrir en nueva pestaña
+    this.filesService.downloadFile(attachment.storedName, attachment.filename, false)
+      .catch(() => this.toastService.error('No se pudo abrir el archivo.'));
   }
 
   downloadFile(attachment: PqrsAttachment): void {
-    window.open(this.filesService.getFileUrl(attachment.storedName, true), '_blank');
+    // Usamos HttpClient (con el interceptor JWT) para descargar el archivo con token
+    this.filesService.downloadFile(attachment.storedName, attachment.filename, true)
+      .catch(() => this.toastService.error('No se pudo descargar el archivo.'));
   }
 
   deleteAttachment(attachment: PqrsAttachment): void {
