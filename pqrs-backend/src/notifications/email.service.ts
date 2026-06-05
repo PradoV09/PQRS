@@ -1,15 +1,33 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Resend } from 'resend';
+import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class EmailService {
-  private resend: Resend;
+  private transporter: nodemailer.Transporter;
   private readonly logger = new Logger(EmailService.name);
 
   constructor(private configService: ConfigService) {
-    const apiKey = this.configService.get<string>('RESEND_API_KEY');
-    this.resend = new Resend(apiKey);
+    this.transporter = nodemailer.createTransport({
+      host: this.configService.get<string>('SMTP_SERVER'),
+      port: this.configService.get<number>('SMTP_PORT'),
+      secure: false,
+      tls: {
+        rejectUnauthorized: false,
+      },
+      auth: {
+        user: this.configService.get<string>('EMAIL_USER'),
+        pass: this.configService.get<string>('EMAIL_PASS'),
+      },
+    });
+
+    this.transporter.verify((error, success) => {
+      if (error) {
+        this.logger.error('Error verificando transporter SMTP:', error);
+      } else {
+        this.logger.log('Transporter SMTP verificado exitosamente');
+      }
+    });
   }
 
   private getPortalUrl(pqrsId?: string): string {
@@ -19,22 +37,23 @@ export class EmailService {
 
   private async sendMail(to: string, subject: string, html: string) {
     try {
-      const from = this.configService.get<string>('MAIL_FROM') || 'onboarding@resend.dev';
-      const { data, error } = await this.resend.emails.send({
+      const from = this.configService.get<string>('EMAIL_USER');
+      this.logger.log(`Intentando enviar correo a ${to} desde ${from}`);
+      
+      const info = await this.transporter.sendMail({
         from,
-        to: [to],
+        to,
         subject,
         html,
       });
 
-      if (error) {
-        this.logger.warn(`Resend RECHAZÓ el envío a ${to}. Motivo: ${error.message}. TIP: En el plan gratuito de Resend, solo puedes enviarte correos a ti mismo.`);
-        return;
-      }
-
-      this.logger.log(`Correo enviado exitosamente a ${to}. ID: ${data?.id}`);
+      this.logger.log(`Correo enviado exitosamente a ${to}. ID: ${info.messageId}`);
     } catch (error) {
       this.logger.error(`Excepción en sendMail para ${to}:`, error);
+      if (error instanceof Error) {
+        this.logger.error(`Error message: ${error.message}`);
+        this.logger.error(`Error stack: ${error.stack}`);
+      }
     }
   }
 
