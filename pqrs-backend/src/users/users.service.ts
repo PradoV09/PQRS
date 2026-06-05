@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { User } from './entities/user.entity';
 import { RegisterDto } from '../auth/dto/register.dto';
 import * as bcrypt from 'bcrypt';
+import { EmailService } from '../notifications/email.service';
 
 @Injectable()
 export class UsersService {
@@ -12,6 +13,7 @@ export class UsersService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly config: ConfigService,
+    private readonly emailService: EmailService,
   ) {}
 
   async findByEmail(email: string): Promise<User | null> {
@@ -56,7 +58,7 @@ export class UsersService {
   ): Promise<void> {
     const user = await this.userRepository.findOne({
       where: { id: userId },
-      select: { id: true, passwordHash: true, refreshTokenHash: true },
+      select: { id: true, nombre: true, email: true, passwordHash: true, refreshTokenHash: true },
     });
 
     if (!user) {
@@ -78,6 +80,11 @@ export class UsersService {
     user.refreshTokenHash = null; // Revocar sesiones activas
 
     await this.userRepository.save(user);
+
+    await this.emailService.sendPasswordChangeNotification({
+      nombre: user.nombre,
+      email: user.email,
+    });
   }
 
   async findAll(): Promise<User[]> {

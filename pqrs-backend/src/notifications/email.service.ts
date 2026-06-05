@@ -149,4 +149,73 @@ export class EmailService {
     `;
     return this.sendMail(data.to, `Asignación de Área: ${data.radicado}`, html);
   }
+
+  async sendWelcomeEmail(data: { nombre: string; email: string }) {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:4200';
+    const html = `
+      <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
+        <div style="background: #1a56db; padding: 20px; text-align: center;">
+          <h1 style="color: white; margin: 0;">¡Bienvenido al Sistema PQRS!</h1>
+        </div>
+        <div style="padding: 30px 20px;">
+          <p>Estimado(a) <strong>${data.nombre}</strong>,</p>
+          <p>Le damos la más cordial bienvenida a nuestro sistema de Peticiones, Quejas, Reclamos y Sugerencias.</p>
+          <p>Su cuenta ha sido creada exitosamente. Ahora puede:</p>
+          <ul style="list-style: none; padding: 0;">
+            <li style="padding: 10px 0; border-bottom: 1px solid #e5e7eb;">✅ Crear nuevas solicitudes PQRS</li>
+            <li style="padding: 10px 0; border-bottom: 1px solid #e5e7eb;">✅ Hacer seguimiento a sus trámites</li>
+            <li style="padding: 10px 0; border-bottom: 1px solid #e5e7eb;">✅ Recibir notificaciones sobre sus solicitudes</li>
+            <li style="padding: 10px 0;">✅ Gestionar su información personal</li>
+          </ul>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${frontendUrl}" style="display: inline-block; background: #1a56db; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-size: 16px;">Ingresar al Sistema</a>
+          </div>
+          <p style="font-size: 14px; color: #666; margin-top: 30px;">
+            Si tiene alguna pregunta o necesita asistencia, no dude en contactarnos.
+          </p>
+          <p style="font-size: 14px; color: #666;">
+            Atentamente,<br>
+            <strong>Equipo de Soporte PQRS</strong>
+          </p>
+        </div>
+        <div style="background: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #666;">
+          <p>Este es un correo automático, por favor no responda.</p>
+        </div>
+      </div>
+    `;
+    return this.sendMail(data.email, '¡Bienvenido al Sistema PQRS!', html);
+  }
+
+  async sendPasswordChangeNotification(data: { nombre: string; email: string }) {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:4200';
+    const html = `
+      <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
+        <div style="background: #059669; padding: 20px; text-align: center;">
+          <h1 style="color: white; margin: 0;">Contraseña Modificada</h1>
+        </div>
+        <div style="padding: 30px 20px;">
+          <p>Estimado(a) <strong>${data.nombre}</strong>,</p>
+          <p>Le informamos que su contraseña ha sido modificada exitosamente.</p>
+          <div style="background: #ecfdf5; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #059669;">
+            <p style="margin: 0; color: #065f46;">Si usted realizó este cambio, puede ignorar este correo.</p>
+          </div>
+          <p style="color: #dc2626; font-weight: bold;">Si no realizó este cambio, por favor contacte inmediatamente a soporte para proteger su cuenta.</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${frontendUrl}" style="display: inline-block; background: #059669; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-size: 16px;">Ingresar al Sistema</a>
+          </div>
+          <p style="font-size: 14px; color: #666; margin-top: 30px;">
+            Por seguridad, todas las sesiones activas han sido cerradas. Deberá iniciar sesión nuevamente.
+          </p>
+          <p style="font-size: 14px; color: #666;">
+            Atentamente,<br>
+            <strong>Equipo de Soporte PQRS</strong>
+          </p>
+        </div>
+        <div style="background: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #666;">
+          <p>Este es un correo automático, por favor no responda.</p>
+        </div>
+      </div>
+    `;
+    return this.sendMail(data.email, 'Contraseña Modificada Exitosamente', html);
+  }
 }

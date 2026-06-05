@@ -12,6 +12,7 @@ import { RegisterDto } from './dto/register.dto';
 import { User } from '../users/entities/user.entity';
 import * as bcrypt from 'bcrypt';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { EmailService } from '../notifications/email.service';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +22,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
+    private readonly emailService: EmailService,
   ) {}
 
   async emailExiste(email: string): Promise<boolean> {
@@ -49,6 +51,11 @@ export class AuthService {
     const hashRounds = 10;
     saved.refreshTokenHash = await bcrypt.hash(tokens.refreshToken, hashRounds);
     await this.usersRepo.save(saved);
+
+    await this.emailService.sendWelcomeEmail({
+      nombre: saved.nombre,
+      email: saved.email,
+    });
 
     return {
       user: saved.toJSON(),
